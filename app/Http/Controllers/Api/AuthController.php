@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
 use App\Models\User;
+use App\Models\Role;
 use App\Http\Controllers\Controller;
 
 
@@ -23,17 +24,24 @@ class AuthController extends Controller
             'password' => 'required|string|min:6',
         ]);
 
+        // Gán vai trò mặc định là receptionist
+        // $roleId = Role::where('name', 'receptionist')->value('id');
+
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
             'password' => Hash::make($request->password),
+            'role_id'  => 2,
+            'status'   => 'not_active',
         ]);
 
         return response()->json([
+            'message' => 'Tạo tài khoản thành công. Vui lòng chờ duyệt.',
             'user'  => $user,
             'token' => $user->createToken('api_token')->plainTextToken
         ], 201);
     }
+
 
     // Đăng nhập (WBS 1.2)
     public function login(Request $request)
@@ -51,11 +59,19 @@ class AuthController extends Controller
             ]);
         }
 
+        // ✅ Kiểm tra trạng thái tài khoản
+        if ($user->status !== 'active') {
+            return response()->json([
+                'message' => 'Tài khoản của bạn chưa được duyệt bởi quản trị viên.'
+            ], 403);
+        }
+
         return response()->json([
             'user'  => $user,
             'token' => $user->createToken('api_token')->plainTextToken
         ]);
     }
+
 
     // Đăng xuất (Xóa token hiện tại)
     public function logout(Request $request)

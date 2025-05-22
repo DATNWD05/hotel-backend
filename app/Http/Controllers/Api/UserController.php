@@ -35,7 +35,20 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        //
+        // 1. Lấy user theo id
+        $user = User::find($id);
+
+        // 2. Nếu không tìm thấy thì trả về lỗi 404
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // 3. Trả về JSON
+        return response()->json([
+            'data' => $user
+        ], 200);
     }
 
     /**

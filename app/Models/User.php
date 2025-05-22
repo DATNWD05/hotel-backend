@@ -23,6 +23,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role_id',
+        'status' 
     ];
 
     /**
@@ -51,5 +53,10 @@ class User extends Authenticatable
     public function sendPasswordResetNotification($token)
     {
         $this->notify(new CustomResetPassword($token));
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
     }
 }
