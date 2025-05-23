@@ -17,6 +17,7 @@ class CustomerFactory extends Factory
     public function definition(): array
     {
         return [
+            'cccd'          => $this->faker->unique()->numerify('############'),
             'first_name'    => $this->faker->firstName,
             'last_name'     => $this->faker->lastName,
             'gender'        => $this->faker->randomElement(['male', 'female', 'other']), // ✅ giới tính

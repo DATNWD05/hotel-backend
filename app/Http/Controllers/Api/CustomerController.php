@@ -26,6 +26,7 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'cccd'          => 'required|string|size:12|unique:customers,cccd',
             'first_name'    => 'required|string|max:100',
             'last_name'     => 'required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
@@ -49,6 +50,7 @@ class CustomerController extends Controller
         }
 
         $data = $request->validate([
+            'cccd'          => 'required|string|size:12|unique:customers,cccd',
             'first_name'    => 'sometimes|required|string|max:100',
             'last_name'     => 'sometimes|required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',

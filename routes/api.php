@@ -23,7 +23,9 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 // Khách hàng 
-Route::get('/customers', [CustomerController::class, 'index']);
-Route::get('/customers/{id}', [CustomerController::class, 'show']);
-Route::post('/customers', [CustomerController::class, 'store']); // Thêm mới
-Route::post('/customers/{id}', [CustomerController::class, 'update']); // Cập nhật
+Route::middleware(['auth:sanctum', 'role:Admin', 'role:Receptionist'])->group(function () {
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::get('/customers/{id}', [CustomerController::class, 'show']);
+    Route::post('/customers', [CustomerController::class, 'store']);
+    Route::post('/customers/{id}', [CustomerController::class, 'update']);
+});
