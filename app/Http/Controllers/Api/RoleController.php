@@ -1,65 +1,73 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
 use App\Models\Role;
 use Illuminate\Http\Request;
 
 class RoleController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    // Lấy danh sách tất cả các role
     public function index()
     {
-        //
+        return response()->json([
+            'message' => 'Danh sách vai trò',
+            'roles' => Role::all(),
+        ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
+    // Tạo mới một role
     public function store(Request $request)
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $role = Role::create([
+            'name' => $request->name,
+            'description' => $request->description,
+        ]);
+
+        return response()->json(
+            [
+                'message' => 'Tạo vai trò thành công',
+                'role' => $role,
+                'status' => 201
+            ]
+        );
     }
 
-    /**
-     * Display the specified resource.
-     */
+    // Lấy chi tiết một role
     public function show(Role $role)
     {
-        //
+        return response()->json($role);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Role $role)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
+    // Cập nhật một role
     public function update(Request $request, Role $role)
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        $role->update([
+            'name' => $request->name,
+            'description' => $request->description,
+        ]);
+
+        return response()->json($role);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
+    // Xóa một role
     public function destroy(Role $role)
     {
-        //
+        $role->delete();
+        return response()->json(
+            [
+                'message' => 'Xóa vai trò thành công'
+            ]
+        );
     }
 }
