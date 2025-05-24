@@ -5,13 +5,16 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
+use App\Http\Middleware\RoleMiddleware;
 
 // Chỉ cho admin được xem danh sách và chi tiết người dùng
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware([
+    'auth:sanctum',RoleMiddleware::class . ':Admin',])->group(function () {
     Route::get('/users', [UserController::class, 'index']);
-    Route::get('/users/{id}', [UserController::class, 'show']);   
-    Route::get('/users/{id}', [UserController::class, 'destroy']);
-
+    Route::post('/users', [UserController::class, 'store']);
+    Route::post('/users/{id}', [UserController::class, 'show']);
+    Route::put('/users/{id}', [UserController::class, 'update']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
 });
 
 Route::post('/register', [AuthController::class, 'register']);     // 1.1
