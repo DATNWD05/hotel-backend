@@ -9,15 +9,17 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-{
-    Schema::create('roles', function (Blueprint $table) {
-        $table->id();
-        $table->string('name')->unique(); // ví dụ: admin, receptionist, housekeeping,...
-        $table->string('description')->nullable();
-        $table->timestamps();
-    });
-}
+    public function up()
+    {
+        if (!Schema::hasTable('roles')) {
+            Schema::create('roles', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->string('description')->nullable();
+                $table->timestamps();
+            });
+        }
+    }
 
     /**
      * Reverse the migrations.
