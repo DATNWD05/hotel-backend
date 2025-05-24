@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
 
 
+
 Route::middleware(['auth:sanctum'])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
@@ -28,3 +29,9 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 
 Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
+
+
+Route::middleware(['auth:sanctum','role:Admin'])->group(function () {
+    Route::apiResource('role', RoleController::class); // singular path
+});
+
