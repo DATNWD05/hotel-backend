@@ -28,6 +28,15 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
     //route về chức năng quản lí nhân viên và phòng ban
     Route::apiResource('employees', EmployeeController::class);
     Route::apiResource('departments', DepartmentController::class);
+
+    // Routes cho RoomType
+    Route::apiResource('room-types', RoomTypeController::class);
+
+    // Routes cho Floor
+    Route::apiResource('floors', FloorController::class);
+
+    // Routes cho Room
+    Route::apiResource('rooms', RoomController::class);
 });
 
 // Khách hàng 
@@ -41,32 +50,10 @@ Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function (
 Route::post('/register', [AuthController::class, 'register']);     // 1.1
 Route::post('/login', [AuthController::class, 'login']);           // 1.2
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-// Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum', 'role:Admin');
-
 Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 
 Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
-    // Routes cho RoomType
-    Route::get('room-types', [RoomTypeController::class, 'index']);
-    Route::get('room-types/{id}', [RoomTypeController::class, 'show']);
-    Route::post('room-types', [RoomTypeController::class, 'store']);
-    Route::put('room-types/{id}', [RoomTypeController::class, 'update']);
-    Route::delete('room-types/{id}', [RoomTypeController::class, 'destroy']);
-
-    // Routes cho Floor
-    Route::get('floors', [FloorController::class, 'index']);
-    Route::get('floors/{id}', [FloorController::class, 'show']);
-    Route::post('floors', [FloorController::class, 'store']);
-    Route::put('floors/{id}', [FloorController::class, 'update']);
-    Route::delete('floors/{id}', [FloorController::class, 'destroy']);
-
-    // Routes cho Room
-    Route::get('rooms', [RoomController::class, 'index']);
-    Route::get('rooms/{id}', [RoomController::class, 'show']);
-    Route::post('rooms', [RoomController::class, 'store']);
-    Route::put('rooms/{id}', [RoomController::class, 'update']);
-    Route::delete('rooms/{id}', [RoomController::class, 'destroy']);
-    Route::get('rooms/floor/{floorId}', [RoomController::class, 'getRoomsByFloor']);
+    
 });
