@@ -9,11 +9,11 @@ return new class extends Migration
     public function up()
     {
         Schema::create('departments', function (Blueprint $table) {
-            $table->id();
-            $table->string('name')->unique();
-            $table->foreignId('manager_id')->nullable()->constrained('employees')->onDelete('set null');
-            $table->timestamps();
-        });
+        $table->id();
+        $table->string('name')->unique();
+        $table->unsignedBigInteger('manager_id')->nullable();
+    });
+
     }
 
     public function down()
