@@ -21,6 +21,10 @@ class DatabaseSeeder extends Seeder
         //     'email' => 'test@example.com',
         // ]);
 
-        Customer::factory()->count(5)->create();
+        // Customer::factory()->count(5)->create();
+        $this->call([
+            ServiceCategorySeeder::class, // Seeder cho các danh mục dịch vụ
+            ServiceSeeder::class,         // Seeder cho các dịch vụ
+        ]);
     }
 }

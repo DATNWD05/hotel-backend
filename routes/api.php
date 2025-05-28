@@ -5,9 +5,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\ServiceCategoryController;
+
 
 
 
@@ -18,14 +21,20 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
     Route::post('/users/{id}', [UserController::class, 'show']);
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
-  
+
     // Route Role
     Route::apiResource('role', RoleController::class); // singular path
-  
+
     //route về chức năng quản lí nhân viên và phòng ban
     Route::apiResource('employees', EmployeeController::class);
     Route::apiResource('departments', DepartmentController::class);
+
+    // Route Service
+    Route::apiResource('service-categories', ServiceCategoryController::class);
+    Route::apiResource('service', ServiceController::class);
+    // Bất lực
 });
+
 
 // Khách hàng 
 Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function () {
@@ -44,8 +53,4 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
-    
-});
-
-
+Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {});
