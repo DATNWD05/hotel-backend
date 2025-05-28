@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\BookingPromotionController;
+use App\Http\Controllers\Api\PromotionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
@@ -11,20 +13,25 @@ use App\Http\Controllers\Api\EmployeeController;
 
 
 
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
+Route::middleware(['auth:sanctum'])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
     Route::post('/users/{id}', [UserController::class, 'show']);
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
-  
+
     // Route Role
     Route::apiResource('role', RoleController::class); // singular path
-  
+
     //route về chức năng quản lí nhân viên và phòng ban
     Route::apiResource('employees', EmployeeController::class);
     Route::apiResource('departments', DepartmentController::class);
+
+    // route về quản lí khuyến mãi
+    Route::apiResource('promotions', PromotionController::class);
+    // Route::apiResource('bookings',   BookingController::class);
+    Route::post('bookings/{booking}/apply-promotion',[BookingPromotionController::class, 'apply']);
 });
 
 // Khách hàng 
@@ -44,9 +51,7 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
-    
-});
+Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {});
 
 
 
