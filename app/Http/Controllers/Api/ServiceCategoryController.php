@@ -87,15 +87,19 @@ class ServiceCategoryController extends Controller
     // Xóa danh mục dịch vụ
     public function destroy($id)
     {
-        // Tìm danh mục dịch vụ theo ID
         $category = ServiceCategory::findOrFail($id);
 
-        // Xóa danh mục dịch vụ
+        // Kiểm tra nếu có dịch vụ liên quan
+        if ($category->services()->count() > 0) {
+            return response()->json([
+                'message' => 'Không thể xóa danh mục vì vẫn còn dịch vụ liên kết.',
+            ], 400); // 400 Bad Request
+        }
+
         $category->delete();
 
-        // Trả về thông báo thành công
         return response()->json([
             'message' => 'Danh mục dịch vụ đã được xóa thành công.',
-        ], 204);  // Trả về trạng thái 204 No Content
+        ], 204);
     }
 }
