@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\BookingPromotionController;
+use App\Http\Controllers\Api\PromotionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
@@ -29,10 +31,16 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
     Route::apiResource('employees', EmployeeController::class);
     Route::apiResource('departments', DepartmentController::class);
 
+
+    // route về quản lí khuyến mãi
+    Route::apiResource('promotions', PromotionController::class);
+    // Route::apiResource('bookings',   BookingController::class);
+    Route::post('bookings/{booking}/apply-promotion',[BookingPromotionController::class, 'apply']);
+
     // Route Service
     Route::apiResource('service-categories', ServiceCategoryController::class);
     Route::apiResource('service', ServiceController::class);
-    // Bất lực
+   
 });
 
 
@@ -53,4 +61,3 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {});
