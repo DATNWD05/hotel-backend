@@ -27,8 +27,7 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'cccd'          => 'required|string|size:12|unique:customers,cccd',
-            'first_name'    => 'required|string|max:100',
-            'last_name'     => 'required|string|max:100',
+            'name'    => 'required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
             'email'         => 'nullable|email|max:255',
             'phone'         => 'nullable|string|max:20',
@@ -51,8 +50,7 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'cccd'          => 'required|string|size:12|unique:customers,cccd',
-            'first_name'    => 'sometimes|required|string|max:100',
-            'last_name'     => 'sometimes|required|string|max:100',
+            'name'    => 'sometimes|required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
             'email'         => 'nullable|email|max:255',
             'phone'         => 'nullable|string|max:20',

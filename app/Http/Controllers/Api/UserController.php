@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
@@ -30,27 +33,68 @@ class UserController extends Controller
 }
 
 public function store(Request $request)
-{
-    $request->validate([
-        'name' => 'required|string|max:100',
-        'email' => 'required|email|unique:users,email',
-        'role_id' => 'required|exists:roles,id',
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:100',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:6',
+            'role_id' => 'required|exists:roles,id',
+            'birthday' => 'nullable|date',
+            'gender' => 'nullable|string|in:Nam,Nữ,Khác',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:255',
+            'hire_date' => 'nullable|date',
+            'department_id' => 'nullable|exists:departments,id',
+            'status' => 'required|string',
+            'cccd' => 'nullable|string|max:20',
+        ]);
 
-    $defaultPassword = 'password123'; 
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Dữ liệu không hợp lệ',
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-    $user = User::create([
-        'name' => $request->name,
-        'email' => $request->email,
-        'password' => Hash::make($defaultPassword),
-        'role_id' => $request->role_id,
-    ]);
+        DB::beginTransaction();
+        try {
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role_id' => $request->role_id,
+            ]);
 
-    return response()->json([
-        'message' => 'Tạo người dùng thành công.',
-        'user' => $user
-    ], 201);
-}
+            $employee = Employee::create([
+                'user_id' => $user->id,
+                'name' => $request->name,
+                'email' => $request->email,
+                'role' => $user->role->name ?? 'Receptionist',
+                'birthday' => $request->birthday,
+                'gender' => $request->gender,
+                'phone' => $request->phone,
+                'address' => $request->address,
+                'hire_date' => $request->hire_date,
+                'department_id' => $request->department_id,
+                'status' => $request->status,
+                'cccd' => $request->cccd,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Tạo tài khoản và nhân viên thành công.',
+                'user' => $user,
+                'employee' => $employee,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Lỗi khi tạo dữ liệu.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
 
     public function show(string $id)

@@ -1,16 +1,29 @@
 <?php
 
+use App\Http\Controllers\Api\BookingPromotionController;
+use App\Http\Controllers\Api\PromotionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
 use App\Http\Controllers\Api\AuthController;
+
 use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\RoomController;
+
 use App\Http\Controllers\Api\UserController;
+
+use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\FloorController;
-use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\RoomTypeController;
+
+use App\Http\Controllers\Api\CustomerController;
+
+use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\DepartmentController;
+
+use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\ServiceCategoryController;
+
+
 
 
 
@@ -37,7 +50,18 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
 
     // Routes cho Room
     Route::apiResource('rooms', RoomController::class);
+
+    // route về quản lí khuyến mãi
+    Route::apiResource('promotions', PromotionController::class);
+    // Route::apiResource('bookings',   BookingController::class);
+    Route::post('bookings/{booking}/apply-promotion',[BookingPromotionController::class, 'apply']);
+
+    // Route Service
+    Route::apiResource('service-categories', ServiceCategoryController::class);
+    Route::apiResource('service', ServiceController::class);
+
 });
+
 
 // Khách hàng 
 Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function () {
@@ -54,6 +78,3 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
 
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
-    
-});
