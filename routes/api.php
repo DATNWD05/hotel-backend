@@ -42,5 +42,5 @@ Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function (
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
-    Route::post('/customers/{id}', [CustomerController::class, 'update']);
+    Route::put('/customers/{id}', [CustomerController::class, 'update']);
 });
