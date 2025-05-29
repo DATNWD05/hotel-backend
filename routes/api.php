@@ -4,14 +4,25 @@ use App\Http\Controllers\Api\BookingPromotionController;
 use App\Http\Controllers\Api\PromotionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
 use App\Http\Controllers\Api\AuthController;
+
 use App\Http\Controllers\Api\RoleController;
+
 use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\ServiceController;
+
+use App\Http\Controllers\Api\RoomController;
+use App\Http\Controllers\Api\FloorController;
+use App\Http\Controllers\Api\RoomTypeController;
+
 use App\Http\Controllers\Api\CustomerController;
+
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\DepartmentController;
+
+use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\ServiceCategoryController;
+
 
 
 
@@ -31,6 +42,14 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
     Route::apiResource('employees', EmployeeController::class);
     Route::apiResource('departments', DepartmentController::class);
 
+    // Routes cho RoomType
+    Route::apiResource('room-types', RoomTypeController::class);
+
+    // Routes cho Floor
+    Route::apiResource('floors', FloorController::class);
+
+    // Routes cho Room
+    Route::apiResource('rooms', RoomController::class);
 
     // route về quản lí khuyến mãi
     Route::apiResource('promotions', PromotionController::class);
@@ -40,7 +59,7 @@ Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
     // Route Service
     Route::apiResource('service-categories', ServiceCategoryController::class);
     Route::apiResource('service', ServiceController::class);
-   
+
 });
 
 
@@ -55,8 +74,6 @@ Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function (
 Route::post('/register', [AuthController::class, 'register']);     // 1.1
 Route::post('/login', [AuthController::class, 'login']);           // 1.2
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-// Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum', 'role:Admin');
-
 Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
 Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
 
