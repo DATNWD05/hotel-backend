@@ -13,7 +13,7 @@ use App\Http\Controllers\Controller;
 
 
 
-class AuthController extends Controller
+class   AuthController extends Controller
 {
     // Đăng ký (WBS 1.1)
     // public function register(Request $request)

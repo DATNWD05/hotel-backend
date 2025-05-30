@@ -26,8 +26,8 @@ use App\Http\Controllers\Api\ServiceCategoryController;
 
 
 
-
-Route::middleware(['auth:sanctum', 'role:Admin'])->group(function () {
+    
+Route::middleware(['auth:sanctum'])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
