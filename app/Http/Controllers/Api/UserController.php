@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -114,13 +115,6 @@ public function store(Request $request)
 
   public function update(Request $request, string $id)
 {
-    $request->validate([
-        'name' => 'sometimes|string|max:100',
-        'email' => 'sometimes|email|unique:users,email,' . $id,
-        'password' => 'nullable|min:6',
-        'role_id' => 'sometimes|exists:roles,id'
-    ]);
-
     $user = User::find($id);
 
     if (!$user) {
@@ -128,6 +122,15 @@ public function store(Request $request)
             'message' => 'Không tìm thấy người dùng'
         ], 404);
     }
+
+    $request->validate([
+        'name' => 'sometimes|string|max:100',
+        'email' => ['sometimes','email',
+            Rule::unique('users')->ignore($user->id),
+        ],
+        'password' => 'nullable|min:6',
+        'role_id' => 'sometimes|exists:roles,id',
+    ]);
 
     $user->name = $request->name ?? $user->name;
     $user->email = $request->email ?? $user->email;
