@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 
 class CustomerController extends Controller
@@ -49,7 +50,12 @@ class CustomerController extends Controller
         }
 
         $data = $request->validate([
-            'cccd'          => 'required|string|size:12|unique:customers,cccd',
+            'cccd'          => [
+                'required',
+                'string',
+                'size:12',
+                Rule::unique('customers', 'cccd')->ignore($customer->id), // bỏ qua chính nó
+            ],
             'name'    => 'sometimes|required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
             'email'         => 'nullable|email|max:255',
