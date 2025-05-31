@@ -16,7 +16,7 @@ class PromotionController extends Controller
     public function index(): JsonResponse
     {
         // Lấy các promotion đang active
-        $promotions = Promotion::active()->get();
+        $promotions = Promotion::all();
         return response()->json($promotions);
     }
 
