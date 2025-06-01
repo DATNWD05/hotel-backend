@@ -161,24 +161,30 @@ class RoomTypeController extends Controller
             return response()->json([
                 'message' => 'Loại phòng không tồn tại.',
                 'data' => null
-            ], 404);  // Trả về 404 nếu không tìm thấy loại phòng
+            ], 404);
+        }
+
+        // Kiểm tra xem loại phòng có phòng nào đang sử dụng không
+        if ($roomType->rooms()->exists()) {
+            return response()->json([
+                'message' => 'Không thể xóa loại phòng đang có phòng sử dụng.',
+                'data' => null
+            ], 400);
         }
 
         try {
-            // Tiến hành xóa loại phòng
             $roomType->delete();
 
             return response()->json([
                 'message' => 'Loại phòng đã được xóa thành công.',
                 'data' => null
-            ], 200);  // Trả về 200 khi xóa thành công
+            ], 200);
         } catch (Exception $e) {
-            // Trả về thông báo lỗi nếu có lỗi khi xóa
             return response()->json([
                 'message' => 'Đã xảy ra lỗi khi xóa loại phòng.',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);  // Trả về lỗi 500 khi có lỗi không mong muốn
+            ], 500);
         }
     }
 }
