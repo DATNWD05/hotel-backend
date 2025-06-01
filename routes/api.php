@@ -12,7 +12,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 
 use App\Http\Controllers\Api\RoomController;
-use App\Http\Controllers\Api\FloorController;
+// use App\Http\Controllers\Api\FloorController;
 use App\Http\Controllers\Api\RoomTypeController;
 
 use App\Http\Controllers\Api\CustomerController;
@@ -26,7 +26,7 @@ use App\Http\Controllers\Api\ServiceCategoryController;
 
 
 
-    
+
 Route::middleware(['auth:sanctum'])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
@@ -46,10 +46,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('room-types', RoomTypeController::class);
 
     // Routes cho Floor
-    Route::apiResource('floors', FloorController::class);
+    // Route::apiResource('floors', FloorController::class);
 
     // Routes cho Room
     Route::apiResource('rooms', RoomController::class);
+    // Route::post('/rooms/{id}', [RoomController::class, 'update'])->name('rooms.update');
+
 
     // route về quản lí khuyến mãi
     Route::apiResource('promotions', PromotionController::class);
@@ -58,12 +60,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Route Service
     Route::apiResource('service-categories', ServiceCategoryController::class);
+    // Route Danh muc Service
     Route::apiResource('service', ServiceController::class);
 
 });
 
 
-// Khách hàng 
+// Khách hàng
 Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
@@ -71,10 +74,10 @@ Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function (
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
 });
 
-Route::post('/register', [AuthController::class, 'register']);     // 1.1
-Route::post('/login', [AuthController::class, 'login']);           // 1.2
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-Route::post('/forgot-password', [AuthController::class, 'forgot']); // 1.5
-Route::post('/reset-password', [AuthController::class, 'reset']);   // 1.5
+Route::post('/forgot-password', [AuthController::class, 'forgot']);
+Route::post('/reset-password', [AuthController::class, 'reset']);
 
 
