@@ -15,26 +15,34 @@ class UserController extends Controller
 {
     public function index(Request $request)
 {
-    $users = User::with('role:id,name') // lấy kèm vai trò
-        ->select('id', 'name', 'email', 'role_id','status' , 'created_at')
-        ->get()
-        ->map(function ($user) {
-    return [
-        'id' => $user->id,
-        'name' => $user->name,
-        'email' => $user->email,
-        'role_id' => $user->role_id, 
-        'role' => $user->role->name ?? null,
-        'status' => $user->status,
-        'created_at' => $user->created_at,
-    ];
-});
+    $perPage = $request->input('per_page', 10); // mặc định 10 dòng mỗi trang
 
+    $users = User::with('role:id,name')
+        ->select('id', 'name', 'email', 'role_id', 'status', 'created_at')
+        ->paginate($perPage);
+
+    // Sử dụng map để thêm tên vai trò
+    $users->getCollection()->transform(function ($user) {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role_id' => $user->role_id,
+            'role' => $user->role->name ?? null,
+            'status' => $user->status,
+            'created_at' => $user->created_at,
+        ];
+    });
 
     return response()->json([
-        'data' => $users
+        'data' => $users->items(),
+        'current_page' => $users->currentPage(),
+        'last_page' => $users->lastPage(),
+        'per_page' => $users->perPage(),
+        'total' => $users->total(),
     ]);
 }
+
 
 public function store(Request $request)
     {
