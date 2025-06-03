@@ -9,7 +9,7 @@ use App\Http\Controllers\Controller;
 class ServiceCategoryController extends Controller
 {
     // Lấy tất cả danh mục dịch vụ
-    public function index()
+    public function index(Request $request)
     {
         $categories = ServiceCategory::paginate(10); // Phân trang 10 danh mục mỗi trang
 

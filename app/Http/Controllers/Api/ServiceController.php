@@ -12,11 +12,11 @@ class ServiceController extends Controller
     // Lấy tất cả dịch vụ
     public function index()
     {
-        $categories = ServiceCategory::paginate(10); // Phân trang 10 danh mục mỗi trang
+        $services = Service::with('category')->paginate(10); // đơn giản như bạn muốn
 
         return response()->json([
-            'message' => 'Danh sách tất cả danh mục dịch vụ',
-            'data' => $categories
+            'message' => 'Danh sách tất cả dịch vụ',
+            'data' => $services
         ], 200);
     }
 
