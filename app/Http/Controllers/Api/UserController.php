@@ -14,29 +14,27 @@ use Illuminate\Validation\Rule;
 class UserController extends Controller
 {
     public function index(Request $request)
-{
-    $users = User::with('role:id,name') // lấy kèm vai trò
-        ->select('id', 'name', 'email', 'role_id','status' , 'created_at')
-        ->get()
-        ->map(function ($user) {
-    return [
-        'id' => $user->id,
-        'name' => $user->name,
-        'email' => $user->email,
-        'role_id' => $user->role_id, 
-        'role' => $user->role->name ?? null,
-        'status' => $user->status,
-        'created_at' => $user->created_at,
-    ];
-});
+    {
+        $users = User::with('role:id,name') // lấy kèm vai trò
+            ->select('id', 'name', 'email', 'role_id', 'status', 'created_at')
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role_id' => $user->role_id,
+                    'role' => $user->role->name ?? null,
+                    'status' => $user->status,
+                    'created_at' => $user->created_at,
+                ];
+            });
+        return response()->json([
+            'data' => $users
+        ]);
+    }
 
-
-    return response()->json([
-        'data' => $users
-    ]);
-}
-
-public function store(Request $request)
+    public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
@@ -87,7 +85,8 @@ public function store(Request $request)
             DB::commit();
 
             return response()->json([
-                'message' => 'Tạo tài khoản và nhân viên thành công.','user' => $user,
+                'message' => 'Tạo tài khoản và nhân viên thành công.',
+                'user' => $user,
                 'employee' => $employee,
             ], 201);
         } catch (\Exception $e) {
@@ -115,40 +114,42 @@ public function store(Request $request)
         ], 200);
     }
 
-  public function update(Request $request, string $id)
-{
-    $user = User::find($id);
+    public function update(Request $request, string $id)
+    {
+        $user = User::find($id);
 
-    if (!$user) {
+        if (!$user) {
+            return response()->json([
+                'message' => 'Không tìm thấy người dùng'
+            ], 404);
+        }
+
+        $request->validate([
+            'name' => 'sometimes|string|max:100',
+            'email' => [
+                'sometimes',
+                'email',
+                Rule::unique('users')->ignore($user->id),
+            ],
+            'password' => 'nullable|min:6',
+            'role_id' => 'sometimes|exists:roles,id',
+        ]);
+
+        $user->name = $request->name ?? $user->name;
+        $user->email = $request->email ?? $user->email;
+        $user->role_id = $request->role_id ?? $user->role_id;
+
+        if ($request->filled('password')) {
+            $user->password = Hash::make($request->password);
+        }
+
+        $user->save();
+
         return response()->json([
-            'message' => 'Không tìm thấy người dùng'
-        ], 404);
+            'message' => 'Cập nhật người dùng thành công.',
+            'user' => $user
+        ], 200);
     }
-
-    $request->validate([
-        'name' => 'sometimes|string|max:100',
-        'email' => ['sometimes','email',
-            Rule::unique('users')->ignore($user->id),
-        ],
-        'password' => 'nullable|min:6',
-        'role_id' => 'sometimes|exists:roles,id',
-    ]);
-
-    $user->name = $request->name ?? $user->name;
-    $user->email = $request->email ?? $user->email;
-    $user->role_id = $request->role_id ?? $user->role_id;
-
-    if ($request->filled('password')) {
-        $user->password = Hash::make($request->password);
-    }
-
-    $user->save();
-
-    return response()->json([
-        'message' => 'Cập nhật người dùng thành công.',
-        'user' => $user
-    ], 200);
-}
 
 
 

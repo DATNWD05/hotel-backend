@@ -11,13 +11,21 @@ use Illuminate\Support\Facades\Log;
 class DepartmentController extends Controller
 {
     public function index()
-    {
-        $data = Department::with('manager')->get();
-        return response()->json([
-            'status' => 'success',
-            'data' => $data,
-        ]);
-    }
+{
+    $data = Department::with('manager')->paginate(10);
+
+    return response()->json([
+        'status' => 'success',
+        'data'   => $data->items(),        // mảng 10 bản ghi của trang hiện tại
+        'meta'   => [
+            'current_page' => $data->currentPage(),
+            'last_page'    => $data->lastPage(),
+            'per_page'     => $data->perPage(),
+            'total'        => $data->total(),
+        ],
+    ]);
+}
+
 
 
     public function store(StoreDepartmentRequest $request)

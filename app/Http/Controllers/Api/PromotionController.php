@@ -15,9 +15,18 @@ class PromotionController extends Controller
 {
     public function index(): JsonResponse
     {
-        // Lấy các promotion đang active
-        $promotions = Promotion::all();
-        return response()->json($promotions);
+        $query = Promotion::paginate(10);
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $query->items(),       // mảng 10 bản ghi của trang này
+            'meta'   => [
+                'current_page' => $query->currentPage(),
+                'last_page'    => $query->lastPage(),
+                'per_page'     => $query->perPage(),
+                'total'        => $query->total(),
+            ],
+        ]);
     }
 
     public function store(StorePromotionRequest $request): JsonResponse
@@ -26,7 +35,7 @@ class PromotionController extends Controller
             $promo = Promotion::create($request->validated());
             return response()->json($promo, Response::HTTP_CREATED);
         } catch (\Throwable $e) {
-            Log::error('Create Promotion failed: '.$e->getMessage());
+            Log::error('Create Promotion failed: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Tạo mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -44,7 +53,7 @@ class PromotionController extends Controller
             $promotion->update($request->validated());
             return response()->json($promotion);
         } catch (\Throwable $e) {
-            Log::error('Update Promotion failed: '.$e->getMessage());
+            Log::error('Update Promotion failed: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Cập nhật mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -66,7 +75,7 @@ class PromotionController extends Controller
             $promotion->delete();
             return response()->json(null, Response::HTTP_NO_CONTENT);
         } catch (\Throwable $e) {
-            Log::error('Delete Promotion failed: '.$e->getMessage());
+            Log::error('Delete Promotion failed: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Xóa mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
