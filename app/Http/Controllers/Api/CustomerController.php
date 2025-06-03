@@ -4,14 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 
 class CustomerController extends Controller
 {
     public function index()
     {
-        $customers = Customer::all();
-        return response()->json($customers);
+        $data = Customer::paginate(10);
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $data->items(),
+            'meta'   => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ]);
     }
 
     public function show($id)
@@ -27,8 +38,7 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'cccd'          => 'required|string|size:12|unique:customers,cccd',
-            'first_name'    => 'required|string|max:100',
-            'last_name'     => 'required|string|max:100',
+            'name'    => 'required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
             'email'         => 'nullable|email|max:255',
             'phone'         => 'nullable|string|max:20',
@@ -50,9 +60,13 @@ class CustomerController extends Controller
         }
 
         $data = $request->validate([
-            'cccd'          => 'required|string|size:12|unique:customers,cccd',
-            'first_name'    => 'sometimes|required|string|max:100',
-            'last_name'     => 'sometimes|required|string|max:100',
+            'cccd'          => [
+                'required',
+                'string',
+                'size:12',
+                Rule::unique('customers', 'cccd')->ignore($customer->id), // bỏ qua chính nó
+            ],
+            'name'    => 'sometimes|required|string|max:100',
             'gender'        => 'nullable|in:male,female,other',
             'email'         => 'nullable|email|max:255',
             'phone'         => 'nullable|string|max:20',

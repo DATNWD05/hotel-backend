@@ -13,34 +13,35 @@ use App\Http\Controllers\Controller;
 
 
 
-class AuthController extends Controller
+class   AuthController extends Controller
 {
     // Đăng ký (WBS 1.1)
-    public function register(Request $request)
-    {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-        ]);
+    // public function register(Request $request)
+    // {
+    //     $request->validate([
+    //         'name'     => 'required|string|max:255',
+    //         'email'    => 'required|string|email|max:255|unique:users',
+    //         'password' => 'required|string|min:6',
+    //     ]);
 
-        // Gán vai trò mặc định là receptionist
-        // $roleId = Role::where('name', 'receptionist')->value('id');
+    //     // Gán vai trò mặc định là receptionist
+    //     // $roleId = Role::where('name', 'receptionist')->value('id');
 
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-            'role_id'  => 2,
-            'status'   => 'not_active',
-        ]);
+    //     $user = User::create([
+    //         'name'     => $request->name,
+    //         'email'    => $request->email,
+    //         'password' => Hash::make($request->password),
+    //         'role_id'  => 2,
+    //         'status'   => 'not_active',
+    //     ]);
+        
 
-        return response()->json([
-            'message' => 'Tạo tài khoản thành công. Vui lòng chờ duyệt.',
-            'user'  => $user,
-            'token' => $user->createToken('api_token')->plainTextToken
-        ], 201);
-    }
+    //     return response()->json([
+    //         'message' => 'Tạo tài khoản thành công. Vui lòng chờ duyệt.',
+    //         'user'  => $user,
+    //         'token' => $user->createToken('api_token')->plainTextToken
+    //     ], 201);
+    // }
 
 
     // Đăng nhập (WBS 1.2)

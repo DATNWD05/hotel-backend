@@ -9,11 +9,11 @@ return new class extends Migration
     public function up()
     {
         Schema::create('departments', function (Blueprint $table) {
-        $table->id();
-        $table->string('name')->unique();
-        $table->unsignedBigInteger('manager_id')->nullable();
-    });
-
+            $table->id();
+            $table->string('name')->unique();
+            $table->unsignedBigInteger('manager_id')->nullable(); // Không dùng foreignId ở đây
+            $table->timestamps();
+        });
     }
 
     public function down()
