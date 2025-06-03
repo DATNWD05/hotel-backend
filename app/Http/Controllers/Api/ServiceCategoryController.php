@@ -9,13 +9,14 @@ use App\Http\Controllers\Controller;
 class ServiceCategoryController extends Controller
 {
     // Lấy tất cả danh mục dịch vụ
-    public function index()
+    public function index(Request $request)
     {
-        $categories = ServiceCategory::all();  // Lấy tất cả các danh mục dịch vụ
+        $categories = ServiceCategory::paginate(10); // Phân trang 10 danh mục mỗi trang
+
         return response()->json([
             'message' => 'Danh sách tất cả danh mục dịch vụ',
             'data' => $categories
-        ], 200); // Trả về danh sách danh mục dịch vụ với thông báo thành công
+        ], 200);
     }
 
     // Lấy danh mục dịch vụ theo ID
