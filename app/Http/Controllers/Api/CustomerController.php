@@ -11,8 +11,18 @@ class CustomerController extends Controller
 {
     public function index()
     {
-        $customers = Customer::paginate(10);
-        return response()->json($customers);
+        $data = Customer::paginate(10);
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $data->items(),
+            'meta'   => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ]);
     }
 
     public function show($id)
