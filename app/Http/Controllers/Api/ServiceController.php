@@ -12,12 +12,18 @@ class ServiceController extends Controller
     // Lấy tất cả dịch vụ
     public function index()
     {
-        $services = Service::with('category')->paginate(10); // đơn giản như bạn muốn
+        $data = Service::with('category')->paginate(10);
 
         return response()->json([
-            'message' => 'Danh sách tất cả dịch vụ',
-            'data' => $services
-        ], 200);
+            'status' => 'success',
+            'data'   => $data->items(),
+            'meta'   => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ]);
     }
 
     // Lấy dịch vụ theo ID
