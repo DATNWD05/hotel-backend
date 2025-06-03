@@ -12,11 +12,12 @@ class ServiceController extends Controller
     // Lấy tất cả dịch vụ
     public function index()
     {
-        $services = Service::with('category')->get();  // Lấy tất cả dịch vụ cùng với danh mục của dịch vụ
+        $categories = ServiceCategory::paginate(10); // Phân trang 10 danh mục mỗi trang
+
         return response()->json([
-            'message' => 'Danh sách tất cả dịch vụ',
-            'data' => $services
-        ], 200); // Trả về danh sách dịch vụ với thông báo thành công
+            'message' => 'Danh sách tất cả danh mục dịch vụ',
+            'data' => $categories
+        ], 200);
     }
 
     // Lấy dịch vụ theo ID
