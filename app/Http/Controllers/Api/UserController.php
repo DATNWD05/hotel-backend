@@ -16,17 +16,20 @@ class UserController extends Controller
     public function index(Request $request)
 {
     $users = User::with('role:id,name') // lấy kèm vai trò
-        ->select('id', 'name', 'email', 'role_id', 'created_at')
+        ->select('id', 'name', 'email', 'role_id','status' , 'created_at')
         ->get()
         ->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role->name ?? null,
-                'created_at' => $user->created_at,
-            ];
-        });
+    return [
+        'id' => $user->id,
+        'name' => $user->name,
+        'email' => $user->email,
+        'role_id' => $user->role_id, 
+        'role' => $user->role->name ?? null,
+        'status' => $user->status,
+        'created_at' => $user->created_at,
+    ];
+});
+
 
     return response()->json([
         'data' => $users
@@ -84,8 +87,7 @@ public function store(Request $request)
             DB::commit();
 
             return response()->json([
-                'message' => 'Tạo tài khoản và nhân viên thành công.',
-                'user' => $user,
+                'message' => 'Tạo tài khoản và nhân viên thành công.','user' => $user,
                 'employee' => $employee,
             ], 201);
         } catch (\Exception $e) {
