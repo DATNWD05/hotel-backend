@@ -21,13 +21,13 @@ use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\DepartmentController;
 
 use App\Http\Controllers\Api\ServiceController;
-use App\Http\Controllers\Api\ServiceCategoryController;
+use App\Http\Controllers\Api\ServiceCategoryController; 
 
 
 
 
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
@@ -67,7 +67,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 
 // Khách hàng
-Route::middleware(['auth:sanctum', 'role:Admin,Receptionist'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);

@@ -25,7 +25,7 @@ class RoomController extends Controller
             $query->where('room_number', 'like', '%' . $request->room_number . '%');
         }
 
-        // Tìm kiếm theo loại phòng
+        // Tìm kiếm theo loại phòng 
         if ($request->filled('room_type_id')) {
             $query->where('room_type_id', $request->room_type_id);
         }
@@ -70,7 +70,7 @@ class RoomController extends Controller
     // Lấy thông tin phòng theo ID
     public function show($id)
     {
-        $room = Room::with(['roomType', 'floor'])->find($id);
+        $room = Room::with(['roomType'])->find($id);
 
         if (!$room) {
             return response()->json([

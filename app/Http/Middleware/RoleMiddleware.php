@@ -38,11 +38,12 @@ class RoleMiddleware
         }
 
         // ⚠️ Vai trò không hợp lệ
-        if (!in_array($user->role->name, $roles)) {
+        // if (!in_array($user->role->name, $roles)) {
+        if (!in_array($user->role->id, $roles)) {
             return response()->json([
                 'message' => 'Bạn không có quyền truy cập.',
                 'vai_tro_hien_tai' => $user->role->name,
-                'yeu_cau' => $roles,
+                'yeu_cau_role_id' => $roles,
             ], 403);
         }
 
