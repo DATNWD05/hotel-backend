@@ -187,4 +187,71 @@ class RoomTypeController extends Controller
             ], 500);
         }
     }
+
+    public function syncAmenities(Request $request, RoomType $room_type)
+    {
+        try {
+            $request->validate([
+                'amenities' => [
+                    'required',
+                    'array',
+                    function ($attribute, $value, $fail) {
+                        if (empty($value)) {
+                            $fail('Danh sách amenities không được để trống.');
+                        }
+                    },
+                ],
+                'amenities.*.id' => [
+                    'required',
+                    'integer',
+                    'exists:amenities,id',
+                    function ($attribute, $value, $fail) {
+                        if (!is_numeric($value) || $value <= 0) {
+                            $fail('ID của amenity phải là số nguyên dương.');
+                        }
+                    },
+                ],
+                'amenities.*.quantity' => [
+                    'required',
+                    'integer',
+                    'min:1',
+                    'max:100', // Giới hạn tối đa, tùy chỉnh theo nhu cầu
+                    function ($attribute, $value, $fail) {
+                        if (!is_numeric($value)) {
+                            $fail('Quantity phải là số.');
+                        }
+                    },
+                ],
+            ], [
+                'amenities.required' => 'Danh sách amenities là bắt buộc.',
+                'amenities.array' => 'Danh sách amenities phải là một mảng.',
+                'amenities.*.id.required' => 'ID của amenity là bắt buộc.',
+                'amenities.*.id.exists' => 'Amenity với ID :input không tồn tại.',
+                'amenities.*.id.integer' => 'ID của amenity phải là số nguyên.',
+                'amenities.*.quantity.required' => 'Quantity là bắt buộc.',
+                'amenities.*.quantity.integer' => 'Quantity phải là số nguyên.',
+                'amenities.*.quantity.min' => 'Quantity phải lớn hơn hoặc bằng :min.',
+                'amenities.*.quantity.max' => 'Quantity không được vượt quá :max.',
+            ]);
+
+            // Chuyển sang định dạng [amenity_id => ['quantity' => X], ...]
+            $syncData = [];
+            foreach ($request->input('amenities') as $item) {
+                $syncData[$item['id']] = ['quantity' => $item['quantity']];
+            }
+
+            // Đồng bộ pivot
+            $room_type->amenities()->sync($syncData);
+
+            // Lấy lại danh sách amenities (kèm quantity) mới nhất
+            $updatedList = $room_type->amenities()->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => $updatedList
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
 }
