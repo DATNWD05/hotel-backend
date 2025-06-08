@@ -13,4 +13,14 @@ class RoomType extends Model
     {
         return $this->hasMany(Room::class);  // Mối quan hệ 1-n với phòng
     }
+
+    public function amenities()
+    {
+        return $this->belongsToMany(
+            Amenity::class,
+            'room_type_amenities',
+            'room_type_id',
+            'amenity_id'
+        )->withPivot('quantity');
+    }
 }
