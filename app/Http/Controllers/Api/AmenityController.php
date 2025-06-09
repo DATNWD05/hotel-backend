@@ -16,17 +16,24 @@ class AmenityController extends Controller
     /**
      * GET /api/amenities
      */
-    public function index(): JsonResponse
-    {
-        $amenities = Amenity::with('category')
-            ->orderBy('created_at', 'desc')
-            ->get();
+   public function index(): JsonResponse
+{
+    $paginated = Amenity::with('category')
+        ->orderBy('created_at', 'desc')
+        ->paginate(10);
 
-        return response()->json([
-            'status' => 'success',
-            'data'   => AmenityResource::collection($amenities),
-        ], 200);
-    }
+    return response()->json([
+        'status' => 'success',
+        'data'   => AmenityResource::collection($paginated->items()),
+        'meta'   => [
+            'current_page' => $paginated->currentPage(),
+            'per_page'     => $paginated->perPage(),
+            'last_page'    => $paginated->lastPage(),
+            'total'        => $paginated->total(),
+        ],
+    ], 200);
+}
+
 
     /**
      * POST /api/amenities

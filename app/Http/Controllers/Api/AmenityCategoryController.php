@@ -14,12 +14,18 @@ class AmenityCategoryController extends Controller
     // GET /api/amenity-categories
     public function index(): JsonResponse
     {
-        $categories = AmenityCategory::orderBy('created_at', 'desc')->get();
+        $paginated = AmenityCategory::orderBy('created_at', 'desc')
+            ->paginate(10);
 
-        // Trả về collection của resource
         return response()->json([
             'status' => 'success',
-            'data'   => AmenityCategoryResource::collection($categories),
+            'data'   => AmenityCategoryResource::collection($paginated->items()),
+            'meta'   => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'last_page'    => $paginated->lastPage(),
+                'total'        => $paginated->total(),
+            ],
         ], 200);
     }
 
