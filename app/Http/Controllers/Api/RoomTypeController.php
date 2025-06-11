@@ -66,6 +66,9 @@ class RoomTypeController extends Controller
             ], [
                 'code.required' => 'Mã loại phòng là bắt buộc.',
                 'code.unique' => 'Mã loại phòng đã tồn tại.',
+                'name.required' => 'Tên loại phòng là bắt buộc.',
+                'name.string' => 'Tên loại phòng phải là một chuỗi.',
+                'name.max' => 'Tên loại phòng không được vượt quá 150 ký tự.',
                 'max_occupancy.required' => 'Sức chứa tối đa là bắt buộc.',
                 'max_occupancy.integer' => 'Sức chứa tối đa phải là số nguyên.',
                 'base_rate.required' => 'Giá cơ bản là bắt buộc.',

@@ -143,7 +143,7 @@ class UserController extends Controller
             ],
             'password' => 'nullable|min:6',
             'role_id' => 'sometimes|exists:roles,id',
-            'status' => 'sometimes|in:active,inactive', // ✅ Cho phép cập nhật status
+            'status' => 'sometimes|in:active,not_active', // ✅ Cho phép cập nhật status
         ]);
 
         $data = $request->only(['name', 'email', 'role_id', 'status']); // ✅ Thêm status
