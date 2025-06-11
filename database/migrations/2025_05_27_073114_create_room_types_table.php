@@ -10,8 +10,11 @@ class CreateRoomTypesTable extends Migration
     {
         Schema::create('room_types', function (Blueprint $table) {
             $table->id();
-            $table->string('name');        // Tên loại phòng (Phòng đơn, Phòng đôi, VIP...)
-            $table->text('description');   // Mô tả loại phòng
+            $table->string('code', 20)->unique();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->unsignedTinyInteger('max_occupancy')->default(1);
+            $table->decimal('base_rate', 10, 2)->default(0);
             $table->timestamps();
         });
     }
