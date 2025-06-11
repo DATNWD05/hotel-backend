@@ -1,6 +1,4 @@
 <?php
-// app/Http/Controllers/Api/PromotionController.php
-
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -18,13 +16,13 @@ class PromotionController extends Controller
         $query = Promotion::paginate(10);
 
         return response()->json([
-            'status' => 'success',
-            'data'   => $query->items(),       // mảng 10 bản ghi của trang này
-            'meta'   => [
-                'current_page' => $query->currentPage(),
-                'last_page'    => $query->lastPage(),
-                'per_page'     => $query->perPage(),
-                'total'        => $query->total(),
+            'status'=>'success',
+            'data'  =>$query->items(),
+            'meta'=>[
+                'current_page'=>$query->currentPage(),
+                'last_page'   =>$query->lastPage(),
+                'per_page'    =>$query->perPage(),
+                'total'       =>$query->total(),
             ],
         ]);
     }
@@ -32,12 +30,16 @@ class PromotionController extends Controller
     public function store(StorePromotionRequest $request): JsonResponse
     {
         try {
-            $promo = Promotion::create($request->validated());
+            $data  = $request->validated();
+            $promo = Promotion::create($data);
+            // Đồng bộ trạng thái ngay
+            $promo->syncStatus();
+
             return response()->json($promo, Response::HTTP_CREATED);
         } catch (\Throwable $e) {
-            Log::error('Create Promotion failed: ' . $e->getMessage());
+            Log::error("Tạo khuyến mãi lỗi: {$e->getMessage()}");
             return response()->json([
-                'error' => 'Tạo mã khuyến mãi thất bại.'
+                'error'=>'Tạo mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -51,11 +53,12 @@ class PromotionController extends Controller
     {
         try {
             $promotion->update($request->validated());
+            $promotion->syncStatus();
             return response()->json($promotion);
         } catch (\Throwable $e) {
-            Log::error('Update Promotion failed: ' . $e->getMessage());
+            Log::error("Cập nhật khuyến mãi lỗi: {$e->getMessage()}");
             return response()->json([
-                'error' => 'Cập nhật mã khuyến mãi thất bại.'
+                'error'=>'Cập nhật mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -64,20 +67,20 @@ class PromotionController extends Controller
     {
         try {
             if ($promotion->used_count > 0) {
-                // Chỉ ẩn nếu đã dùng
-                $promotion->update(['is_active' => false]);
+                $promotion->update([
+                    'status'    =>'cancelled',
+                    'is_active'=>false
+                ]);
                 return response()->json([
-                    'message' => 'Mã đã được ẩn.'
+                    'message'=>'Khuyến mãi đã bị ẩn (cancelled).'
                 ], Response::HTTP_OK);
             }
-
-            // Xóa hoàn toàn nếu chưa dùng
             $promotion->delete();
             return response()->json(null, Response::HTTP_NO_CONTENT);
         } catch (\Throwable $e) {
-            Log::error('Delete Promotion failed: ' . $e->getMessage());
+            Log::error("Xóa khuyến mãi lỗi: {$e->getMessage()}");
             return response()->json([
-                'error' => 'Xóa mã khuyến mãi thất bại.'
+                'error'=>'Xóa mã khuyến mãi thất bại.'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

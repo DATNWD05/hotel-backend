@@ -5,6 +5,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Carbon;
 
 class Promotion extends Model
 {
@@ -18,12 +19,41 @@ class Promotion extends Model
         'usage_limit',
         'used_count',
         'is_active',
+        'status',
     ];
 
-    // Chỉ load promotions đang active
-    public function scopeActive($query)
+    protected $casts = [
+        'start_date'  => 'date',
+        'end_date'    => 'date',
+        'usage_limit' => 'integer',
+        'used_count'  => 'integer',
+        'is_active'   => 'boolean',
+        'status'      => 'string',
+    ];
+
+    public function syncStatus(): void
     {
-        return $query->where('is_active', true);
+        $today = Carbon::today();
+
+        if ($this->status === 'cancelled') {
+            // giữ nguyên
+        } elseif ($this->used_count >= $this->usage_limit) {
+            $this->status    = 'depleted';
+            $this->is_active = false;
+        } elseif ($today->lt($this->start_date)) {
+            $this->status    = 'scheduled';
+            $this->is_active = false;
+        } elseif ($today->gt($this->end_date)) {
+            $this->status    = 'expired';
+            $this->is_active = false;
+        } else {
+            $this->status    = 'active';
+            $this->is_active = true;
+        }
+
+        if ($this->isDirty(['status', 'is_active'])) {
+            $this->save();
+        }
     }
 
     public function bookings()
@@ -34,15 +64,5 @@ class Promotion extends Model
         )
             ->withPivot('applied_at')
             ->withTimestamps();
-    }
-
-    // Kiểm tra còn hiệu lực: active, trong ngày, chưa vượt limit
-    public function isValid(): bool
-    {
-        $today = now()->toDateString();
-        return $this->is_active
-            && $today >= $this->start_date
-            && $today <= $this->end_date
-            && $this->used_count < $this->usage_limit;
     }
 }
