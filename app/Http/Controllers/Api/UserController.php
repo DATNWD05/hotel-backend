@@ -81,7 +81,7 @@ class UserController extends Controller
                 'user_id' => $user->id,
                 'name' => $request->name,
                 'email' => $request->email,
-                'role_id' => $request->role_id,
+                'role' => $user->role->name ?? 'Receptionist',
                 'birthday' => $request->birthday,
                 'gender' => $request->gender,
                 'phone' => $request->phone,
@@ -109,7 +109,6 @@ class UserController extends Controller
     }
 
 
-
     public function show(string $id)
     {
         $user = User::find($id);
@@ -135,7 +134,7 @@ class UserController extends Controller
             ], 404);
         }
 
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'sometimes|string|max:100',
             'email' => [
                 'sometimes',
@@ -144,24 +143,22 @@ class UserController extends Controller
             ],
             'password' => 'nullable|min:6',
             'role_id' => 'sometimes|exists:roles,id',
+            'status' => 'sometimes|in:active,inactive', // ✅ Cho phép cập nhật status
         ]);
 
-        $user->name = $request->name ?? $user->name;
-        $user->email = $request->email ?? $user->email;
-        $user->role_id = $request->role_id ?? $user->role_id;
+        $data = $request->only(['name', 'email', 'role_id', 'status']); // ✅ Thêm status
 
         if ($request->filled('password')) {
-            $user->password = Hash::make($request->password);
+            $data['password'] = Hash::make($request->password);
         }
 
-        $user->save();
+        $user->update($data);
 
         return response()->json([
             'message' => 'Cập nhật người dùng thành công.',
             'user' => $user
         ], 200);
     }
-
 
 
     public function destroy(string $id)
