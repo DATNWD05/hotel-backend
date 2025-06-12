@@ -25,15 +25,10 @@ class RoomController extends Controller
             $query->where('room_number', 'like', '%' . $request->room_number . '%');
         }
 
-        // Tìm kiếm theo loại phòng 
+        // Tìm kiếm theo loại phòng
         if ($request->filled('room_type_id')) {
             $query->where('room_type_id', $request->room_type_id);
         }
-
-        // Tìm kiếm theo tầng
-        // if ($request->filled('floor_id')) {
-        //     $query->where('floor_id', $request->floor_id);
-        // }
 
         // Tìm kiếm theo trạng thái
         if ($request->filled('status')) {
@@ -50,7 +45,6 @@ class RoomController extends Controller
         }
 
         // Lấy tất cả phòng nếu không có tìm kiếm
-        // $rooms = $query->with(['roomType', 'floor'])->get();
         $rooms = $query->with(['roomType'])->get();
 
         if ($rooms->isEmpty()) {
@@ -64,7 +58,7 @@ class RoomController extends Controller
         return response()->json([
             'message' => 'Danh sách phòng theo tiêu chí tìm kiếm hoặc tất cả phòng.',
             'data' => $rooms,
-        ], 200);  // Trả về 200 khi có dữ liệu
+        ], 200);
     }
 
     // Lấy thông tin phòng theo ID
@@ -93,14 +87,12 @@ class RoomController extends Controller
             $validator = Validator::make($request->all(), [
                 'room_number' => 'required|string|max:255',
                 'room_type_id' => 'required|integer|exists:room_types,id',
-                // 'floor_id' => 'required|integer|exists:floors,id',
                 'price' => 'required|numeric',
                 'status' => 'required|string|in:available,booked,cleaning,maintenance',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             ], [
                 'room_number.required' => 'Số phòng là bắt buộc.',
                 'room_type_id.required' => 'Loại phòng là bắt buộc.',
-                // 'floor_id.required' => 'Tầng là bắt buộc.',
                 'price.required' => 'Giá phòng là bắt buộc.',
                 'status.required' => 'Trạng thái phòng là bắt buộc.',
                 'image.image' => 'Ảnh phải là một tệp hình ảnh.',
@@ -123,7 +115,6 @@ class RoomController extends Controller
             $room = Room::create([
                 'room_number' => $request->room_number,
                 'room_type_id' => $request->room_type_id,
-                // 'floor_id' => $request->floor_id,
                 'price' => $request->price,
                 'status' => $request->status,
                 'image' => $imagePath,
@@ -175,7 +166,6 @@ class RoomController extends Controller
                     Rule::unique('rooms')->ignore($room->id),
                 ],
                 'room_type_id' => 'required|integer|exists:room_types,id',
-                // 'floor_id' => 'required|integer|exists:floors,id',
                 'price' => 'required|numeric',
                 'status' => 'required|string|in:available,booked,cleaning,maintenance',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -183,7 +173,6 @@ class RoomController extends Controller
                 'room_number.required' => 'Số phòng là bắt buộc.',
                 'room_number.unique' => 'Số phòng đã tồn tại.',
                 'room_type_id.required' => 'Loại phòng là bắt buộc.',
-                // 'floor_id.required' => 'Tầng là bắt buộc.',
                 'price.required' => 'Giá phòng là bắt buộc.',
                 'status.required' => 'Trạng thái phòng là bắt buộc.',
                 'image.image' => 'Ảnh phải là một tệp hình ảnh.',
