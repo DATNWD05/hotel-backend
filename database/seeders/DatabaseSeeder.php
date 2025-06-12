@@ -17,14 +17,16 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Vũ Thành Long',
+            'email' => 'vuthanhlong@gmail.com',
+            'password' => bcrypt('Long12345'),
+            'role_id' => 1,
         ]);
 
         // Customer::factory()->count(5)->create();
-        $this->call([
-            ServiceCategorySeeder::class, // Seeder cho các danh mục dịch vụ
-            ServiceSeeder::class,         // Seeder cho các dịch vụ
-        ]);
+        // $this->call([
+        //     ServiceCategorySeeder::class, // Seeder cho các danh mục dịch vụ
+        //     ServiceSeeder::class,         // Seeder cho các dịch vụ
+        // ]);
     }
 }
