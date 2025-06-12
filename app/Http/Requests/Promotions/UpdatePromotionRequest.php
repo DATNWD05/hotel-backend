@@ -34,7 +34,11 @@ class UpdatePromotionRequest extends BaseFormRequest
             'usage_limit'    => 'required|integer|min:1',
             'is_active'      => 'sometimes|boolean',
             'status'         => ['required', Rule::in([
-                'scheduled'
+                'scheduled',
+                'active',
+                'expired',
+                'cancelled',
+                'depleted'
             ])],
         ];
     }
@@ -65,7 +69,7 @@ class UpdatePromotionRequest extends BaseFormRequest
             'usage_limit.integer'     => 'Giới hạn sử dụng phải là số nguyên.',
             'usage_limit.min'         => 'Giới hạn sử dụng phải lớn hơn hoặc bằng 1.',
             'is_active.boolean'       => 'Trường “is_active” phải là true hoặc false.',
-            'status.in'               => 'Trạng thái phải là "scheduled".'
+            'status.in'               => 'Trạng thái phải là một trong: "scheduled", "active", "expired", "cancelled", "depleted".'
         ];
     }
 }
