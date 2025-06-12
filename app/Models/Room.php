@@ -19,4 +19,9 @@ class Room extends Model
     {
         return $this->belongsTo(Floor::class);    // Mối quan hệ với tầng
     }
+
+    public function bookings()
+    {
+        return $this->hasMany(Booking::class);
+    }
 }

@@ -13,35 +13,49 @@ return new class extends Migration
     {
         Schema::create('bookings', function (Blueprint $table) {
             $table->id();
+
             $table->foreignId('customer_id')
                 ->constrained('customers')
                 ->cascadeOnDelete()
                 ->comment('Khách hàng');
+
+            $table->foreignId('room_id')
+                ->constrained('rooms')
+                ->cascadeOnDelete()
+                ->comment('Phòng được đặt');
+
             $table->foreignId('created_by')
                 ->constrained('users')
                 ->cascadeOnDelete()
                 ->comment('Nhân viên tạo');
-            $table->date('check_in_date')->comment('Ngày nhận phòng');
-            $table->date('check_out_date')->comment('Ngày trả phòng');
+
+            $table->date('check_in_date')
+                ->comment('Ngày nhận phòng');
+
+            $table->date('check_out_date')
+                ->comment('Ngày trả phòng');
+
             $table->enum('status', [
                 'Pending',
                 'Confirmed',
                 'Checked-in',
                 'Checked-out',
                 'Canceled'
-            ])->default('Pending')->comment('Trạng thái');
-            $table->decimal('deposit_amount', 12, 2)
-                ->default(0)
-                ->comment('Đặt cọc');
+            ])->default('Pending')
+                ->comment('Trạng thái');
+
             $table->decimal('raw_total', 12, 2)
                 ->default(0)
                 ->comment('Tổng gốc');
+
             $table->decimal('discount_amount', 12, 2)
                 ->default(0)
                 ->comment('Tổng giảm giá');
+
             $table->decimal('total_amount', 12, 2)
                 ->default(0)
                 ->comment('Tổng cuối');
+
             $table->timestamps();
         });
     }
