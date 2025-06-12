@@ -24,7 +24,7 @@ return new class extends Migration
                 ->references('id')->on('room_types')
                 ->restrictOnDelete();
 
-            // Thêm ràng buộc duy nhất cho room_number nếu chưa có
+            // Thêm ràng buộc duy nhất cho room_number nếu  chưa có
             $table->unique('room_number');
         });
     }

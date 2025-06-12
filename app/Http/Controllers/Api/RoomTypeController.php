@@ -57,19 +57,24 @@ class RoomTypeController extends Controller
     public function store(Request $request)
     {
         try {
-            // Validate với thông báo lỗi chi tiết
             $validator = Validator::make($request->all(), [
+                'code' => 'required|string|max:20|unique:room_types,code',
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:500',
+                'max_occupancy' => 'required|integer|min:1|max:20',
+                'base_rate' => 'required|numeric|min:0',
             ], [
+                'code.required' => 'Mã loại phòng là bắt buộc.',
+                'code.unique' => 'Mã loại phòng đã tồn tại.',
                 'name.required' => 'Tên loại phòng là bắt buộc.',
-                'name.string' => 'Tên loại phòng phải là chuỗi.',
-                'name.max' => 'Tên loại phòng không được vượt quá 255 ký tự.',
-                'description.string' => 'Mô tả phải là chuỗi.',
-                'description.max' => 'Mô tả không được vượt quá 500 ký tự.',
+                'name.string' => 'Tên loại phòng phải là một chuỗi.',
+                'name.max' => 'Tên loại phòng không được vượt quá 150 ký tự.',
+                'max_occupancy.required' => 'Sức chứa tối đa là bắt buộc.',
+                'max_occupancy.integer' => 'Sức chứa tối đa phải là số nguyên.',
+                'base_rate.required' => 'Giá cơ bản là bắt buộc.',
+                'base_rate.numeric' => 'Giá cơ bản phải là số.',
             ]);
 
-            // Nếu validate không hợp lệ, trả về lỗi với thông báo chi tiết
             if ($validator->fails()) {
                 return response()->json([
                     'message' => 'Dữ liệu không hợp lệ.',
@@ -78,24 +83,19 @@ class RoomTypeController extends Controller
                 ], 422);
             }
 
-            // Nếu dữ liệu hợp lệ, tạo loại phòng mới
-            $roomType = RoomType::create([
-                'name' => $request->name,
-                'description' => $request->description,
-            ]);
+            $roomType = RoomType::create($validator->validated());
 
             return response()->json([
                 'message' => 'Loại phòng đã được tạo thành công.',
                 'data' => $roomType,
                 'status' => 201
-            ], 201); // Trả về 201 khi tạo thành công
+            ], 201);
         } catch (Exception $e) {
-            // Trường hợp xảy ra lỗi khi tạo loại phòng
             return response()->json([
                 'message' => 'Đã xảy ra lỗi khi tạo loại phòng.',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500); // Trả về lỗi 500 khi có lỗi không mong muốn
+            ], 500);
         }
     }
 
@@ -115,8 +115,11 @@ class RoomTypeController extends Controller
         try {
             // Validate dữ liệu với thông báo lỗi chi tiết
             $validator = Validator::make($request->all(), [
+                'code' => 'required|string|max:20|unique:room_types,code,' . $roomType->id,
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:500',
+                'max_occupancy' => 'required|integer|min:1|max:20',
+                'base_rate' => 'required|numeric|min:0',
             ], [
                 'name.required' => 'Tên loại phòng là bắt buộc.',
                 'name.string' => 'Tên loại phòng phải là chuỗi.',
