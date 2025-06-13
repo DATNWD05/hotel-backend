@@ -64,7 +64,7 @@ class RoomController extends Controller
     // Lấy thông tin phòng theo ID
     public function show($id)
     {
-        $room = Room::with(['roomType'])->find($id);
+        $room = Room::with(['roomType.amenities'])->find($id);
 
         if (!$room) {
             return response()->json([
