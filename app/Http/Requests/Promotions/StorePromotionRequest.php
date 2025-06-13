@@ -31,9 +31,6 @@ class StorePromotionRequest extends BaseFormRequest
             'start_date'     => 'required|date',
             'end_date'       => 'required|date|after_or_equal:start_date',
             'usage_limit'    => 'required|integer|min:1',
-            'status'         => ['required', Rule::in([
-                'scheduled'
-            ])],
         ];
     }
     public function messages(): array
@@ -56,7 +53,6 @@ class StorePromotionRequest extends BaseFormRequest
             'usage_limit.required'    => 'Giới hạn sử dụng là bắt buộc.',
             'usage_limit.integer'     => 'Giới hạn sử dụng phải là số nguyên.',
             'usage_limit.min'         => 'Giới hạn sử dụng phải lớn hơn hoặc bằng 1.',
-            'status.in'               => 'Trạng thái phải là "scheduled".'
         ];
     }
 }
