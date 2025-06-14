@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\RoomType;
-use App\Models\Floor;
+// use App\Models\Floor;
 
 class Room extends Model
 {
@@ -20,8 +20,10 @@ class Room extends Model
     //     return $this->belongsTo(Floor::class);    // Mối quan hệ với tầng
     // }
 
+
     public function bookings()
     {
         return $this->hasMany(Booking::class);
     }
+
 }

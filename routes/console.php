@@ -10,5 +10,5 @@ Artisan::command('inspire', function () {
 
 // **ĐẶT LỊCH CHO COMMAND promotions:sync-status**
 Schedule::command('app:sync-promotion-status')
-    ->dailyAt('00:00')
+    ->everyMinute()
     ->timezone('Asia/Ho_Chi_Minh');
