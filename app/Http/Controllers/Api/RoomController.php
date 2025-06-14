@@ -64,7 +64,7 @@ class RoomController extends Controller
     // Lấy thông tin phòng theo ID
     public function show($id)
     {
-        $room = Room::with(['roomType'])->find($id);
+        $room = Room::with(['roomType.amenities'])->find($id);
 
         if (!$room) {
             return response()->json([
@@ -87,13 +87,11 @@ class RoomController extends Controller
             $validator = Validator::make($request->all(), [
                 'room_number' => 'required|string|max:255',
                 'room_type_id' => 'required|integer|exists:room_types,id',
-                'price' => 'required|numeric',
                 'status' => 'required|string|in:available,booked,cleaning,maintenance',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             ], [
                 'room_number.required' => 'Số phòng là bắt buộc.',
                 'room_type_id.required' => 'Loại phòng là bắt buộc.',
-                'price.required' => 'Giá phòng là bắt buộc.',
                 'status.required' => 'Trạng thái phòng là bắt buộc.',
                 'image.image' => 'Ảnh phải là một tệp hình ảnh.',
             ]);
@@ -115,7 +113,6 @@ class RoomController extends Controller
             $room = Room::create([
                 'room_number' => $request->room_number,
                 'room_type_id' => $request->room_type_id,
-                'price' => $request->price,
                 'status' => $request->status,
                 'image' => $imagePath,
             ]);
@@ -166,14 +163,12 @@ class RoomController extends Controller
                     Rule::unique('rooms')->ignore($room->id),
                 ],
                 'room_type_id' => 'required|integer|exists:room_types,id',
-                'price' => 'required|numeric',
                 'status' => 'required|string|in:available,booked,cleaning,maintenance',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             ], [
                 'room_number.required' => 'Số phòng là bắt buộc.',
                 'room_number.unique' => 'Số phòng đã tồn tại.',
                 'room_type_id.required' => 'Loại phòng là bắt buộc.',
-                'price.required' => 'Giá phòng là bắt buộc.',
                 'status.required' => 'Trạng thái phòng là bắt buộc.',
                 'image.image' => 'Ảnh phải là một tệp hình ảnh.',
             ]);
@@ -201,8 +196,6 @@ class RoomController extends Controller
             $room->update([
                 'room_number' => $request->room_number,
                 'room_type_id' => $request->room_type_id,
-                // 'floor_id' => $request->floor_id,
-                'price' => $request->price,
                 'status' => $request->status,
             ]);
 
@@ -221,7 +214,7 @@ class RoomController extends Controller
             }
 
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi tạo phòng.',
+                'message' => 'Đã xảy ra lỗi khi sửa phòng.',
                 'error' => $e->getMessage(),
                 'status' => 500
             ], 500);
