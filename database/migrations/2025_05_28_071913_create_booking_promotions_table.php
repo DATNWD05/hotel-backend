@@ -9,9 +9,22 @@ return new class extends Migration {
     {
         Schema::create('booking_promotions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('booking_id')->constrained('bookings')->cascadeOnDelete()->comment('FK → bookings');
-            $table->foreignId('promotion_id')->constrained('promotions')->comment('FK → promotions');
-            $table->dateTime('applied_at')->comment('Thời gian áp dụng');
+
+            $table->foreignId('booking_id')
+                ->constrained('bookings')
+                ->cascadeOnDelete()
+                ->comment('FK → bookings');
+
+            $table->foreignId('promotion_id')
+                ->constrained('promotions')
+                ->comment('FK → promotions');
+
+            $table->string('promotion_code')
+                ->comment('Mã khuyến mãi đã áp dụng');
+
+            $table->dateTime('applied_at')
+                ->comment('Thời gian áp dụng');
+
             $table->timestamps();
         });
     }

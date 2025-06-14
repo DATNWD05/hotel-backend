@@ -65,4 +65,14 @@ class Promotion extends Model
             ->withPivot('applied_at')
             ->withTimestamps();
     }
+
+    // Kiểm tra còn hiệu lực: active, trong ngày, chưa vượt limit
+    public function isValid(): bool
+    {
+        $now = now();
+
+        return (!$this->start_date || $this->start_date <= $now)
+            && (!$this->end_date || $this->end_date >= $now)
+            && $this->is_active == 1;
+    }
 }

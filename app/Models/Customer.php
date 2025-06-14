@@ -20,4 +20,9 @@ class Customer extends Model
         'address',
         'note',
     ];
+
+    public function bookings()
+    {
+        return $this->hasMany(Booking::class);
+    }
 }

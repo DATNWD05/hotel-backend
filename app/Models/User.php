@@ -59,4 +59,9 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Role::class);
     }
+
+    public function createdBookings()
+    {
+        return $this->hasMany(Booking::class, 'created_by');
+    }
 }
