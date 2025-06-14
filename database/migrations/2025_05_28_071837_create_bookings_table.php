@@ -44,6 +44,10 @@ return new class extends Migration
             ])->default('Pending')
                 ->comment('Trạng thái');
 
+            $table->decimal('deposit_amount', 12, 2)
+                ->default(0)
+                ->comment('Tiền đặt cọc');
+
             $table->decimal('raw_total', 12, 2)
                 ->default(0)
                 ->comment('Tổng gốc');

@@ -67,12 +67,12 @@ class Promotion extends Model
     }
 
     // Kiểm tra còn hiệu lực: active, trong ngày, chưa vượt limit
-    public function isValid()
+    public function isValid(): bool
     {
         $now = now();
 
-        return $this->start_date <= $now &&
-            $this->end_date >= $now &&
-            $this->is_active; // hoặc tuỳ vào tên cột bạn dùng (ví dụ: 'status' === 'active')
+        return (!$this->start_date || $this->start_date <= $now)
+            && (!$this->end_date || $this->end_date >= $now)
+            && $this->is_active == 1;
     }
 }

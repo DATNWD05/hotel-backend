@@ -20,6 +20,7 @@ class Booking extends Model
         'raw_total',
         'discount_amount',
         'total_amount',
+        'deposit_amount',
     ];
 
     // Quan hệ khách hàng
@@ -40,7 +41,7 @@ class Booking extends Model
         return $this->belongsTo(Room::class);
     }
 
-    // Dịch vụ đã đặt (qua bảng booking_service)
+    // Dịch vụ đã đặt
     public function services(): BelongsToMany
     {
         return $this->belongsToMany(Service::class, 'booking_service')
@@ -48,41 +49,40 @@ class Booking extends Model
             ->withTimestamps();
     }
 
-    // Khuyến mãi áp dụng (qua bảng booking_promotions)
+    // Khuyến mãi áp dụng
     public function promotions(): BelongsToMany
     {
         return $this->belongsToMany(Promotion::class, 'booking_promotions')
-            ->withPivot('promotion_id', 'applied_at')
+            ->withPivot('promotion_code', 'applied_at') // sửa đúng pivot
             ->withTimestamps();
     }
 
-    // Tính lại tổng tiền
+    // Tính lại tổng
     public function recalculateTotal(): void
     {
-        $nights = Carbon::parse($this->check_in_date)
-            ->diffInDays($this->check_out_date);
+        $nights = Carbon::parse($this->check_in_date)->diffInDays($this->check_out_date);
 
-        // Tiền phòng
-        $roomTotal = $this->room->rate * $nights;
+        // Giá phòng lấy từ roomType
+        $roomTypePrice = $this->room->roomType->base_rate ?? 0;
+        $roomTotal = $roomTypePrice * $nights;
 
-        // Tiền dịch vụ
+        // Dịch vụ
         $serviceTotal = $this->services->sum(function ($service) {
-            return $service->pivot->quantity * $service->price;
+            return $service->pivot->quantity * $service->base_rate;
         });
 
         $raw = $roomTotal + $serviceTotal;
 
-        // Tính khuyến mãi nếu có
+        // Tính giảm giá
         $discount = 0;
         $promo = $this->promotions()->latest('pivot_applied_at')->first();
-
         if ($promo && $promo->isValid()) {
             $discount = $promo->discount_type === 'percent'
                 ? $raw * ($promo->discount_value / 100)
                 : $promo->discount_value;
         }
 
-        // Cập nhật đơn
+        // Cập nhật lại
         $this->forceFill([
             'raw_total'       => $raw,
             'discount_amount' => $discount,
