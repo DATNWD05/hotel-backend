@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 
+use App\Http\Controllers\Api\StatisticsController;
+
 
 Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -90,6 +92,40 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         'room-types/{room_type}/amenities',
         [RoomTypeController::class, 'syncAmenities']
     );
+
+    // Thống kê
+   Route::prefix('statistics')->group(function () {
+    // Tổng doanh thu toàn hệ thống
+    Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
+
+    // Doanh thu từng ngày
+    Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
+
+    // Tổng chi phí từng booking
+    Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
+
+    // Doanh thu theo khách hàng
+    Route::get('/total-per-booking', [StatisticsController::class, 'revenueByCustomer']);
+
+    // Doanh thu theo phòng
+    Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
+
+    // 6. Tỷ lệ lấp đầy phòng
+    Route::get('/occupancy-rate', [StatisticsController::class, 'occupancyRate']);
+
+    // 7. Trung bình thời gian lưu trú
+    Route::get('/average-stay-duration', [StatisticsController::class, 'averageStayDuration']);
+
+    // 8. Tỷ lệ huỷ phòng
+    Route::get('/cancellation-rate', [StatisticsController::class, 'cancellationRate']);
+
+    // 9. Top khách đặt nhiều nhất
+    Route::get('/top-customers', [StatisticsController::class, 'topFrequentCustomers']);
+
+    // 10. Tổng số booking theo tháng
+    Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
+    });
+
 });
 
 

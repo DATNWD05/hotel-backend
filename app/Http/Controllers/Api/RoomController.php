@@ -45,7 +45,7 @@ class RoomController extends Controller
         }
 
         // Lấy tất cả phòng nếu không có tìm kiếm
-        $rooms = $query->with(['roomType'])->get();
+        $rooms = $query->with(['roomType.amenities'])->get();
 
         if ($rooms->isEmpty()) {
             return response()->json([
