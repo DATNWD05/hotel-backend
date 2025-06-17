@@ -45,7 +45,8 @@ class RoomController extends Controller
         }
 
         // Lấy tất cả phòng nếu không có tìm kiếm
-        $rooms = $query->with(['roomType.amenities'])->get();
+        $rooms = $query->with(['roomType.amenities', 'bookings.customer'])->get();
+
 
         if ($rooms->isEmpty()) {
             return response()->json([
@@ -64,7 +65,7 @@ class RoomController extends Controller
     // Lấy thông tin phòng theo ID
     public function show($id)
     {
-        $room = Room::with(['roomType.amenities'])->find($id);
+        $room = Room::with(['roomType.amenities', 'bookings.customer'])->find($id);
 
         if (!$room) {
             return response()->json([
