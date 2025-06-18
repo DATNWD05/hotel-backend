@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\AmenityResource;
+
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class AmenityCategoryResource extends JsonResource
@@ -14,10 +16,10 @@ class AmenityCategoryResource extends JsonResource
         return [
             'id'         => $this->id,
             'name'       => $this->name,
-            'created_at' => $this->created_at->toDateTimeString(),
-            'updated_at' => $this->updated_at->toDateTimeString(),
+            'created_at' => optional($this->created_at)->toDateTimeString(),
+            'updated_at' => optional($this->updated_at)->toDateTimeString(),
             // Nếu cần load relationship 'amenities':
-            'amenities'  => AmenityCategoryResource::collection($this->whenLoaded('amenities')),
+            'amenities'  => AmenityResource::collection($this->whenLoaded('amenities')),
         ];
     }
 }
