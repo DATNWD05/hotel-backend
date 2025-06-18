@@ -14,7 +14,7 @@ class RoomTypeController extends Controller
     // Lấy tất cả loại phòng
     public function index()
     {
-        $roomTypes = RoomType::all();
+        $roomTypes = RoomType::with("amenities")->get();
 
         // Nếu không có loại phòng nào
         if ($roomTypes->isEmpty()) {
@@ -35,7 +35,7 @@ class RoomTypeController extends Controller
     // Lấy thông tin loại phòng theo ID
     public function show($id)
     {
-        $roomType = RoomType::find($id);
+        $roomType = RoomType::with("amenities")->find($id);
 
         // Nếu không tìm thấy loại phòng theo ID
         if (!$roomType) {
