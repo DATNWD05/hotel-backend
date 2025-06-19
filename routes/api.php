@@ -1,31 +1,32 @@
 <?php
 
 
-use App\Http\Controllers\Api\AmenityController;
-use App\Http\Controllers\Api\AmenityCategoryController;
-
-use App\Http\Controllers\Api\BookingPromotionController;
-use App\Http\Controllers\Api\PromotionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\RoomController;
 
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\AmenityController;
+use App\Http\Controllers\Api\BookingController;
 
-use App\Http\Controllers\Api\RoomController;
+use App\Http\Controllers\Api\InvoiceController;
+
+use App\Http\Controllers\Api\ServiceController;
 // use App\Http\Controllers\Api\FloorController;
-use App\Http\Controllers\Api\RoomTypeController;
-
 use App\Http\Controllers\Api\CustomerController;
 
 use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\DepartmentController;
 
-use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\RoomTypeController;
+use App\Http\Controllers\Api\PromotionController;
+
+use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\AmenityCategoryController;
 use App\Http\Controllers\Api\ServiceCategoryController;
+use App\Http\Controllers\Api\BookingPromotionController;
 
 
 Route::middleware(['auth:sanctum', "role:1"])->group(function () {
@@ -111,4 +112,7 @@ Route::middleware(['auth:sanctum', "role:2"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
+
+    // Hóa đơn
+    Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
 });
