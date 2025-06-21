@@ -49,8 +49,11 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     Route::apiResource('room-types', RoomTypeController::class);
 
     // Routes cho Room
+    Route::get('/rooms/trashed', [RoomController::class, 'trashed']);
     Route::apiResource('rooms', RoomController::class);
     // Route::post('/rooms/{id}', [RoomController::class, 'update'])->name('rooms.update');
+    Route::post('/rooms/{id}/restore', [RoomController::class, 'restore']);
+    Route::delete('/rooms/{id}/force-delete', [RoomController::class, 'forceDelete']);
 
 
     // route về quản lí khuyến mãi
