@@ -11,17 +11,19 @@ use Carbon\Carbon;
 class Booking extends Model
 {
     protected $fillable = [
-        'customer_id',
-        'room_id',
-        'created_by',
-        'check_in_date',
-        'check_out_date',
-        'status',
-        'raw_total',
-        'discount_amount',
-        'total_amount',
-        'deposit_amount',
-    ];
+    'customer_id',
+    'created_by',
+    'status',
+    'check_in_date',
+    'check_out_date',
+    'check_in_at',
+    'check_out_at',
+    'raw_total',
+    'discount_amount',
+    'total_amount',
+    'deposit_amount',
+];
+
 
     // Quan hệ khách hàng
     public function customer(): BelongsTo
@@ -35,10 +37,12 @@ class Booking extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    // Phòng được đặt
-    public function room(): BelongsTo
+    // Quan hệ nhiều phòng
+    public function rooms(): BelongsToMany
     {
-        return $this->belongsTo(Room::class);
+        return $this->belongsToMany(Room::class, 'booking_room')
+            ->withPivot('rate')
+            ->withTimestamps();
     }
 
     // Dịch vụ đã đặt
@@ -53,27 +57,31 @@ class Booking extends Model
     public function promotions(): BelongsToMany
     {
         return $this->belongsToMany(Promotion::class, 'booking_promotions')
-            ->withPivot('promotion_code', 'applied_at') // sửa đúng pivot
+            ->withPivot('promotion_code', 'applied_at')
             ->withTimestamps();
     }
 
-    // Tính lại tổng
+    // Hàm tính lại tổng tiền
     public function recalculateTotal(): void
     {
+        // Đảm bảo các quan hệ cần thiết đã được load
+        $this->loadMissing(['rooms.roomType', 'services', 'promotions']);
+
         $nights = Carbon::parse($this->check_in_date)->diffInDays($this->check_out_date);
 
-        // Giá phòng lấy từ roomType
-        $roomTypePrice = $this->room->roomType->base_rate ?? 0;
-        $roomTotal = $roomTypePrice * $nights;
+        // Tổng tiền phòng theo nhiều phòng * số đêm
+        $roomTotal = $this->rooms->sum(function ($room) use ($nights) {
+            return ($room->roomType->base_rate ?? 0) * $nights;
+        });
 
-        // Dịch vụ
+        // Tổng tiền dịch vụ
         $serviceTotal = $this->services->sum(function ($service) {
-            return $service->pivot->quantity * $service->base_rate;
+            return $service->pivot->quantity * $service->price;
         });
 
         $raw = $roomTotal + $serviceTotal;
 
-        // Tính giảm giá
+        // Khuyến mãi nếu có
         $discount = 0;
         $promo = $this->promotions()->latest('pivot_applied_at')->first();
         if ($promo && $promo->isValid()) {
@@ -82,7 +90,7 @@ class Booking extends Model
                 : $promo->discount_value;
         }
 
-        // Cập nhật lại
+        // Cập nhật lại booking
         $this->forceFill([
             'raw_total'       => $raw,
             'discount_amount' => $discount,

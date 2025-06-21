@@ -94,38 +94,37 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     );
 
     // Thống kê
-   Route::prefix('statistics')->group(function () {
-    // Tổng doanh thu toàn hệ thống
-    Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
+    Route::prefix('statistics')->group(function () {
+        // Tổng doanh thu toàn hệ thống
+        Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
 
-    // Doanh thu từng ngày
-    Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
+        // Doanh thu từng ngày
+        Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
 
-    // Tổng chi phí từng booking
-    Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
+        // Tổng chi phí từng booking
+        Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
 
-    // Doanh thu theo khách hàng
-    Route::get('/total-per-booking', [StatisticsController::class, 'revenueByCustomer']);
+        // Doanh thu theo khách hàng
+        Route::get('/total-per-booking', [StatisticsController::class, 'revenueByCustomer']);
 
-    // Doanh thu theo phòng
-    Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
+        // Doanh thu theo phòng
+        Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
 
-    // 6. Tỷ lệ lấp đầy phòng
-    Route::get('/occupancy-rate', [StatisticsController::class, 'occupancyRate']);
+        // 6. Tỷ lệ lấp đầy phòng
+        Route::get('/occupancy-rate', [StatisticsController::class, 'occupancyRate']);
 
-    // 7. Trung bình thời gian lưu trú
-    Route::get('/average-stay-duration', [StatisticsController::class, 'averageStayDuration']);
+        // 7. Trung bình thời gian lưu trú
+        Route::get('/average-stay-duration', [StatisticsController::class, 'averageStayDuration']);
 
-    // 8. Tỷ lệ huỷ phòng
-    Route::get('/cancellation-rate', [StatisticsController::class, 'cancellationRate']);
+        // 8. Tỷ lệ huỷ phòng
+        Route::get('/cancellation-rate', [StatisticsController::class, 'cancellationRate']);
 
-    // 9. Top khách đặt nhiều nhất
-    Route::get('/top-customers', [StatisticsController::class, 'topFrequentCustomers']);
+        // 9. Top khách đặt nhiều nhất
+        Route::get('/top-customers', [StatisticsController::class, 'topFrequentCustomers']);
 
-    // 10. Tổng số booking theo tháng
-    Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
+        // 10. Tổng số booking theo tháng
+        Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
     });
-
 });
 
 
@@ -147,4 +146,6 @@ Route::middleware(['auth:sanctum', "role:2"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
+    Route::post('/bookings/{id}', [BookingController::class, 'update']);
+    Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
 });
