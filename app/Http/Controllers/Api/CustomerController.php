@@ -6,6 +6,7 @@ use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Carbon;
 
 class CustomerController extends Controller
 {
@@ -27,25 +28,39 @@ class CustomerController extends Controller
 
     public function show($id)
     {
-        $customer = Customer::find($id);
+        $customer = Customer::with('bookings')->find($id);
         if (!$customer) {
             return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
         }
+
         return response()->json($customer);
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'cccd'          => 'required|string|size:12|unique:customers,cccd',
-            'name'    => 'required|string|max:100',
-            'gender'        => 'nullable|in:male,female,other',
-            'email'         => 'nullable|email|max:255',
-            'phone'         => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
-            'nationality'   => 'nullable|string|max:50',
-            'address'       => 'nullable|string',
-            'note'          => 'nullable|string',
+            'cccd' => [
+                'required',
+                'string',
+                'regex:/^0\d{11}$/',
+                'unique:customers,cccd',
+            ],
+            'name' => 'required|string|max:100',
+            'gender' => 'nullable|in:male,female,other',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'date_of_birth' => [
+                'nullable',
+                'date',
+                function ($attribute, $value, $fail) {
+                    if (Carbon::parse($value)->age < 18) {
+                        $fail('Khách hàng phải từ 18 tuổi trở lên.');
+                    }
+                }
+            ],
+            'nationality' => 'nullable|string|max:50',
+            'address' => 'nullable|string',
+            'note' => 'nullable|string',
         ]);
 
         $customer = Customer::create($data);
@@ -60,20 +75,28 @@ class CustomerController extends Controller
         }
 
         $data = $request->validate([
-            'cccd'          => [
+            'cccd' => [
                 'required',
                 'string',
-                'size:12',
-                Rule::unique('customers', 'cccd')->ignore($customer->id), // bỏ qua chính nó
+                'regex:/^0\d{11}$/',
+                Rule::unique('customers', 'cccd')->ignore($customer->id),
             ],
-            'name'    => 'sometimes|required|string|max:100',
-            'gender'        => 'nullable|in:male,female,other',
-            'email'         => 'nullable|email|max:255',
-            'phone'         => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
-            'nationality'   => 'nullable|string|max:50',
-            'address'       => 'nullable|string',
-            'note'          => 'nullable|string',
+            'name' => 'sometimes|required|string|max:100',
+            'gender' => 'nullable|in:male,female,other',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'date_of_birth' => [
+                'nullable',
+                'date',
+                function ($attribute, $value, $fail) {
+                    if (Carbon::parse($value)->age < 18) {
+                        $fail('Khách hàng phải từ 18 tuổi trở lên.');
+                    }
+                }
+            ],
+            'nationality' => 'nullable|string|max:50',
+            'address' => 'nullable|string',
+            'note' => 'nullable|string',
         ]);
 
         $customer->update($data);
