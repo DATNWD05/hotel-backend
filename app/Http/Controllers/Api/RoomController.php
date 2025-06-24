@@ -11,60 +11,74 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class RoomController extends Controller
 {
     // Lấy tất cả phòng hoặc tìm kiếm phòng theo các tiêu chí
     public function index(Request $request)
-    {
-        // Tạo query cơ bản cho phòng
-        $query = Room::query();
+{
+    // Tạo query builder cho Room
+    $query = Room::query();
 
-        // Tìm kiếm theo số phòng
-        if ($request->filled('room_number')) {
-            $query->where('room_number', 'like', '%' . $request->room_number . '%');
-        }
-
-        // Tìm kiếm theo loại phòng
-        if ($request->filled('room_type_id')) {
-            $query->where('room_type_id', $request->room_type_id);
-        }
-
-        // Tìm kiếm theo trạng thái
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        // Tìm kiếm theo khoảng giá (min_price và max_price)
-        if ($request->filled('min_price')) {
-            $query->where('price', '>=', $request->min_price);
-        }
-
-        if ($request->filled('max_price')) {
-            $query->where('price', '<=', $request->max_price);
-        }
-
-        // Lấy tất cả phòng nếu không có tìm kiếm
-        $rooms = $query->with(['roomType'])->get();
-
-        if ($rooms->isEmpty()) {
-            return response()->json([
-                'message' => 'Không có phòng nào thỏa mãn các tiêu chí tìm kiếm.',
-                'data' => $rooms,
-            ], 404);
-        }
-
-        // Trả về danh sách phòng nếu có kết quả tìm kiếm hoặc không có điều kiện tìm kiếm
-        return response()->json([
-            'message' => 'Danh sách phòng theo tiêu chí tìm kiếm hoặc tất cả phòng.',
-            'data' => $rooms,
-        ], 200);
+    // Tìm kiếm theo số phòng
+    if ($request->filled('room_number')) {
+        $query->where('room_number', 'like', '%' . $request->room_number . '%');
     }
+
+    // Tìm kiếm theo loại phòng
+    if ($request->filled('room_type_id')) {
+        $query->where('room_type_id', $request->room_type_id);
+    }
+
+    // Tìm kiếm theo trạng thái phòng
+    if ($request->filled('status')) {
+        $query->where('status', $request->status);
+    }
+
+    // Tìm kiếm theo khoảng giá
+    if ($request->filled('min_price')) {
+        $query->whereHas('roomType', function ($q) use ($request) {
+            $q->where('price', '>=', $request->min_price);
+        });
+    }
+
+    if ($request->filled('max_price')) {
+        $query->whereHas('roomType', function ($q) use ($request) {
+            $q->where('price', '<=', $request->max_price);
+        });
+    }
+
+    // Eager load quan hệ và loại trừ soft deleted
+    $rooms = $query->with([
+            'roomType.amenities',
+            'bookings.customer',
+            'bookings.creator'
+        ])
+        ->whereNull('deleted_at')
+        ->get();
+
+    // Trả về kết quả
+    if ($rooms->isEmpty()) {
+        return response()->json([
+            'message' => 'Không có phòng nào thỏa mãn các tiêu chí tìm kiếm.',
+            'data' => [],
+        ], 404);
+    }
+
+    return response()->json([
+        'message' => 'Danh sách phòng theo tiêu chí tìm kiếm hoặc tất cả phòng.',
+        'data' => $rooms,
+    ], 200);
+}
+
 
     // Lấy thông tin phòng theo ID
     public function show($id)
     {
+        // $room = Room::with(['roomType.amenities', 'bookings.customer', 'bookings.creator'])->find($id);
         $room = Room::with(['roomType.amenities'])->find($id);
+
 
         if (!$room) {
             return response()->json([
@@ -117,7 +131,7 @@ class RoomController extends Controller
                 'image' => $imagePath,
             ]);
 
-            $room->load(['roomType']); // Tải thông tin liên quan đến room_type
+            $room->load(['roomType.amenities']); // Tải thông tin liên quan đến room_type
 
             return response()->json([
                 'message' => 'Phòng đã được tạo thành công.',
@@ -199,7 +213,7 @@ class RoomController extends Controller
                 'status' => $request->status,
             ]);
 
-            $room->load(['roomType']);
+            $room->load(['roomType.amenities']);
 
             return response()->json([
                 'message' => 'Phòng đã được cập nhật thành công.',
@@ -221,35 +235,106 @@ class RoomController extends Controller
         }
     }
 
-    // Xóa phòng
+    // Xóa phòng mềm
     public function destroy($id)
-    {
-        $room = Room::find($id);
+{
+    $room = Room::find($id);
 
-        if (!$room) {
-            return response()->json([
-                'message' => 'Phòng không tồn tại.',
-                'data' => null
-            ], 404);
-        }
-
-        try {
-            // Xóa ảnh nếu tồn tại
-            if ($room->image && Storage::disk('public')->exists($room->image)) {
-                Storage::disk('public')->delete($room->image);
-            }
-
-            $room->delete();
-
-            return response()->json([
-                'message' => 'Phòng đã được xóa thành công.',
-            ], 200);
-        } catch (Exception $e) {
-            return response()->json([
-                'message' => 'Đã xảy ra lỗi khi xóa phòng.',
-                'error' => $e->getMessage(),
-                'status' => 500
-            ], 500);
-        }
+    if (!$room) {
+        return response()->json([
+            'message' => 'Phòng không tồn tại.',
+            'data' => null
+        ], 404);
     }
+
+    try {
+
+        $room->delete();
+
+        return response()->json([
+            'message' => 'Phòng đã được xóa (mềm) thành công.',
+        ], 200);
+    } catch (Exception $e) {
+        return response()->json([
+            'message' => 'Đã xảy ra lỗi khi xóa phòng.',
+            'error' => $e->getMessage(),
+            'status' => 500
+        ], 500);
+    }
+}
+
+public function restore($id)
+{
+    $room = Room::withTrashed()->find($id);
+
+    if (!$room) {
+        return response()->json([
+            'message' => 'Phòng không tồn tại hoặc chưa từng bị xóa.',
+            'data' => null
+        ], 404);
+    }
+
+    $room->restore();
+
+    return response()->json([
+        'message' => 'Phòng đã được khôi phục thành công.',
+        'data' => $room
+    ], 200);
+}
+
+public function forceDelete($id)
+{
+    $room = Room::withTrashed()->find($id);
+
+    if (!$room) {
+        return response()->json([
+            'message' => 'Phòng không tồn tại.',
+            'data' => null
+        ], 404);
+    }
+
+    // Kiểm tra đã bị xóa mềm chưa
+    if (!$room->trashed()) {
+        return response()->json([
+            'message' => 'Phòng chưa bị xóa mềm nên không thể xóa vĩnh viễn.',
+            'data' => $room
+        ], 400);
+    }
+
+    try {
+        // Xóa ảnh nếu có
+        if ($room->image && Storage::disk('public')->exists($room->image)) {
+            Storage::disk('public')->delete($room->image);
+        }
+
+        $room->forceDelete();
+
+        return response()->json([
+            'message' => 'Phòng đã bị xóa vĩnh viễn khỏi hệ thống.',
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Lỗi khi xóa vĩnh viễn.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+    // Lấy danh sách phòng đã xóa mềm
+    public function trashed()
+{
+    $rooms = Room::onlyTrashed()->with(['roomType.amenities'])->get();
+
+    if ($rooms->isEmpty()) {
+        return response()->json([
+            'message' => 'Không có phòng nào đã bị xóa.',
+            'data' => [],
+        ], 200);
+    }
+
+    return response()->json([
+        'message' => 'Danh sách phòng đã bị xóa mềm.',
+        'data' => $rooms
+    ], 200);
+}
+
 }

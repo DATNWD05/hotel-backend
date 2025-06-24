@@ -3,27 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\RoomType;
-// use App\Models\Floor;
+use App\Models\Booking;
 
 class Room extends Model
 {
-    protected $fillable = ['room_number', 'room_type_id', 'status', 'image'];
+    use SoftDeletes;
 
+    protected $fillable = ['room_number', 'room_type_id', 'status', 'image', 'deleted_at'];
+    protected $dates = ['deleted_at'];
+
+    // Quan hệ với loại phòng
     public function roomType()
     {
-        return $this->belongsTo(RoomType::class);  // Mối quan hệ với loại phòng
+        return $this->belongsTo(RoomType::class);
     }
 
-    // public function floor()
-    // {
-    //     return $this->belongsTo(Floor::class);    // Mối quan hệ với tầng
-    // }
-
-
+    // Quan hệ many-to-many với booking thông qua bảng booking_room
     public function bookings()
     {
-        return $this->hasMany(Booking::class);
+        return $this->belongsToMany(Booking::class, 'booking_room', 'room_id', 'booking_id')
+                    ->withTimestamps(); // nếu bảng trung gian có created_at và updated_at
     }
-
 }

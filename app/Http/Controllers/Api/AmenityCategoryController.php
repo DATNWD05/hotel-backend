@@ -14,8 +14,10 @@ class AmenityCategoryController extends Controller
     // GET /api/amenity-categories
     public function index(): JsonResponse
     {
-        $paginated = AmenityCategory::orderBy('created_at', 'desc')
+        $paginated = AmenityCategory::with('amenities')
+            ->orderBy('created_at', 'desc')
             ->paginate(10);
+
 
         return response()->json([
             'status' => 'success',
