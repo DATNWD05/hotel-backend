@@ -24,6 +24,6 @@ class Room extends Model
     public function bookings()
     {
         return $this->belongsToMany(Booking::class, 'booking_room', 'room_id', 'booking_id')
-                    ->withTimestamps(); // nếu bảng trung gian có created_at và updated_at
+            ->withTimestamps(); // nếu bảng trung gian có created_at và updated_at
     }
 }

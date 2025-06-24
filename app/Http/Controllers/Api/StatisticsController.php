@@ -75,8 +75,8 @@ class StatisticsController extends Controller
     {
         $totalRooms = Room::count();
         $occupiedRooms = Booking::whereDate('check_in_date', '<=', now())
-                                ->whereDate('check_out_date', '>', now())
-                                ->count();
+            ->whereDate('check_out_date', '>', now())
+            ->count();
 
         $rate = $totalRooms > 0 ? round(($occupiedRooms / $totalRooms) * 100, 2) : 0;
 
