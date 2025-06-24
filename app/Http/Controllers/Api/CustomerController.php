@@ -28,13 +28,47 @@ class CustomerController extends Controller
 
     public function show($id)
     {
-        $customer = Customer::with('bookings')->find($id);
+        $customer = Customer::with([
+            'bookings.rooms.roomType.amenities',
+            'bookings.services'
+        ])->find($id);
+
         if (!$customer) {
             return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
         }
 
-        return response()->json($customer);
+        $bookingHistory = $customer->bookings->map(function ($booking) {
+            return [
+                'booking_id' => $booking->id,
+                'check_in'   => $booking->check_in_date,
+                'check_out'  => $booking->check_out_date,
+                'rooms' => $booking->rooms->map(function ($room) {
+                    return [
+                        'room_number' => $room->room_number,
+                        'room_type'   => $room->roomType->name ?? null,
+                        'base_rate'   => $room->roomType->base_rate ?? null,
+                        'amenities'   => $room->roomType->amenities->pluck('name') ?? [],
+                    ];
+                }),
+                'services' => $booking->services->map(function ($service) {
+                    return [
+                        'name'     => $service->name,
+                        'quantity' => $service->pivot->quantity,
+                        'price'    => $service->price,
+                        'total'    => $service->price * $service->pivot->quantity,
+                    ];
+                })
+            ];
+        });
+
+        // Gộp thông tin khách hàng và lịch sử đặt phòng
+        $customerData = $customer->toArray(); // lấy toàn bộ thông tin khách hàng gốc
+        $customerData['booking_history'] = $bookingHistory; // thêm trường lịch sử
+
+        return response()->json($customerData);
     }
+
+
 
     public function store(Request $request)
     {
