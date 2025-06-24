@@ -59,8 +59,9 @@ class StatisticsController extends Controller
     // 5. Tổng doanh thu theo phòng
     public function revenueByRoom()
     {
-        $data = DB::table('bookings')
-            ->join('rooms', 'bookings.room_id', '=', 'rooms.id')
+        $data = DB::table('booking_room')
+            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
+            ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
             ->select('rooms.room_number', DB::raw('SUM(bookings.total_amount) as total_revenue'))
             ->groupBy('rooms.id', 'rooms.room_number')
             ->orderByDesc('total_revenue')
