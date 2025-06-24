@@ -108,8 +108,8 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         // Tổng chi phí từng booking
         Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
 
-        // Doanh thu theo khách hàng
-        Route::get('/total-per-booking', [StatisticsController::class, 'revenueByCustomer']);
+        // 4. Doanh thu theo khách hàng
+        Route::get('/revenue-by-customer', [StatisticsController::class, 'revenueByCustomer']);
 
         // Doanh thu theo phòng
         Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
