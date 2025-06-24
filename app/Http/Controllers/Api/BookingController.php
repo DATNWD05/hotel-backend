@@ -23,25 +23,14 @@ class BookingController extends Controller
         return Booking::with(['customer', 'rooms.roomType.amenities', 'creator', 'services', 'promotions'])->get();
     }
 
-    /**
-     * Hiển thị chi tiết một đơn đặt phòng cụ thể.
-     */
     public function show($id)
     {
-        $booking = Booking::with([
-            'customer',
-            'rooms.roomType.amenities',
-            'creator',
-            'services',
-            'promotions',
-        ])->findOrFail($id);
+        $booking = Booking::with(['customer', 'rooms.roomType.amenities', 'creator', 'services', 'promotions'])
+            ->findOrFail($id);
 
         return response()->json($booking);
     }
 
-    /**
-     * Tạo mới một đơn đặt phòng.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -50,7 +39,11 @@ class BookingController extends Controller
             'customer.gender'        => 'nullable|in:male,female,other',
             'customer.email'         => 'required|email',
             'customer.phone'         => 'required|string|max:20',
-            'customer.date_of_birth' => 'required|date',
+            'customer.date_of_birth' => [
+                'required',
+                'date',
+                'before_or_equal:' . now()->subYears(18)->toDateString(),
+            ],
             'customer.nationality'   => 'required|string|max:255',
             'customer.address'       => 'nullable|string',
             'customer.note'          => 'nullable|string',
@@ -67,9 +60,10 @@ class BookingController extends Controller
 
             'promotion_code'         => 'nullable|string|exists:promotions,code',
             'deposit_amount'         => 'nullable|numeric|min:0',
+        ], [
+            'customer.date_of_birth.before_or_equal' => 'Khách hàng phải đủ 18 tuổi mới được đặt phòng.',
         ]);
 
-        // Kiểm tra phòng đã bị đặt trùng lịch chưa
         foreach ($validated['room_ids'] as $roomId) {
             $conflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
@@ -92,7 +86,6 @@ class BookingController extends Controller
             }
         }
 
-        // Tạo hoặc cập nhật khách hàng
         $customer = Customer::updateOrCreate(
             ['cccd' => $validated['customer']['cccd']],
             $validated['customer']
@@ -101,34 +94,25 @@ class BookingController extends Controller
         $user = Auth::user();
         $nights = Carbon::parse($validated['check_in_date'])->diffInDays($validated['check_out_date']);
 
-        // Tính tiền phòng
         $roomTotal = 0;
-        $roomsData = [];
-        $rooms = Room::with('roomType')->whereIn('id', $validated['room_ids'])->get();
-
-        foreach ($rooms as $room) {
+        $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $nights) {
             $rate = $room->roomType->base_rate ?? 0;
             $roomTotal += $rate * $nights;
-            $roomsData[$room->id] = ['rate' => $rate];
-        }
+            return [$room->id => ['rate' => $rate]];
+        });
 
-        // Tính tiền dịch vụ
         $serviceTotal = 0;
-        $services = [];
-
-        foreach ($validated['services'] ?? [] as $srv) {
+        $servicesData = collect($validated['services'] ?? [])->mapWithKeys(function ($srv) use (&$serviceTotal) {
             $service = Service::findOrFail($srv['service_id']);
             $subtotal = $service->price * $srv['quantity'];
             $serviceTotal += $subtotal;
-            $services[$srv['service_id']] = ['quantity' => $srv['quantity']];
-        }
+            return [$srv['service_id'] => ['quantity' => $srv['quantity']]];
+        });
 
         $rawTotal = $roomTotal + $serviceTotal;
 
-        // Tính khuyến mãi nếu có
         $discount = 0;
         $promotion = null;
-
         if (!empty($validated['promotion_code'])) {
             $promotion = Promotion::where('code', $validated['promotion_code'])->first();
             if ($promotion && $promotion->isValid()) {
@@ -138,7 +122,6 @@ class BookingController extends Controller
             }
         }
 
-        // Tạo đơn đặt phòng
         $booking = Booking::create([
             'customer_id'     => $customer->id,
             'created_by'      => $user->id,
@@ -151,22 +134,13 @@ class BookingController extends Controller
             'deposit_amount'  => $validated['deposit_amount'] ?? 0,
         ]);
 
-        // Gắn phòng đã đặt
-        if (!empty($roomsData)) {
-            $booking->rooms()->attach($roomsData);
-        }
+        $booking->rooms()->attach($roomsData);
+        $booking->services()->attach($servicesData);
 
         foreach ($booking->rooms as $room) {
             $room->update(['status' => 'booked']);
         }
 
-
-        // Gắn dịch vụ
-        if (!empty($services)) {
-            $booking->services()->attach($services);
-        }
-
-        // Gắn khuyến mãi
         if ($promotion) {
             $booking->promotions()->attach($promotion->id, [
                 'promotion_code' => $promotion->code,
@@ -183,6 +157,7 @@ class BookingController extends Controller
     }
 
 
+
     public function update(Request $request, $id)
     {
         $validated = $request->validate([
@@ -191,7 +166,11 @@ class BookingController extends Controller
             'customer.gender'       => 'required|in:Male,Female,Other',
             'customer.email'        => 'required|email',
             'customer.phone'        => 'required|string|max:20',
-            'customer.date_of_birth' => 'required|date',
+            'customer.date_of_birth' => [
+                'required',
+                'date',
+                'before_or_equal:' . now()->subYears(18)->toDateString()
+            ],
             'customer.nationality'  => 'required|string|max:100',
             'customer.address'      => 'nullable|string',
             'customer.note'         => 'nullable|string',
@@ -200,6 +179,9 @@ class BookingController extends Controller
             'room_ids.*'            => 'exists:rooms,id',
             'check_in_date'         => 'required|date|after_or_equal:today',
             'check_out_date'        => 'required|date|after:check_in_date',
+
+            'check_in_at'           => 'nullable|date',
+            'check_out_at'          => 'nullable|date|after_or_equal:check_in_at',
 
             'services'              => 'nullable|array',
             'services.*.service_id' => 'required|exists:services,id',
@@ -211,81 +193,102 @@ class BookingController extends Controller
 
         $booking = Booking::with(['rooms.roomType', 'services', 'promotions'])->findOrFail($id);
 
-        // Cập nhật hoặc lấy khách hàng
+        // Cập nhật hoặc tạo khách hàng
         $customer = Customer::updateOrCreate(
             ['cccd' => $validated['customer']['cccd']],
             $validated['customer']
         );
 
-        $nights = Carbon::parse($validated['check_in_date'])->diffInDays($validated['check_out_date']);
-        $roomTotal = 0;
-        $roomsData = [];
+        // Kiểm tra có thay đổi dữ liệu cần tính lại tiền không
+        $shouldRecalculate = (
+            $booking->check_in_date !== $validated['check_in_date'] ||
+            $booking->check_out_date !== $validated['check_out_date'] ||
+            collect($validated['room_ids'])->sort()->values()->toJson() !== $booking->rooms->pluck('id')->sort()->values()->toJson() ||
+            collect($validated['services'] ?? [])->toJson() !== $booking->services->map(fn($s) => [
+                'service_id' => $s->id,
+                'quantity' => $s->pivot->quantity
+            ])->values()->toJson() ||
+            ($validated['promotion_code'] ?? null) !== optional($booking->promotions->first())->code
+        );
 
-        $rooms = Room::with('roomType')->whereIn('id', $validated['room_ids'])->get();
-
-        foreach ($rooms as $room) {
-            $rate = $room->roomType->base_rate ?? 0;
-            $roomTotal += $rate * $nights;
-            $roomsData[$room->id] = ['rate' => $rate];
-        }
-
-        // Dịch vụ
-        $serviceTotal = 0;
-        $services = [];
-        foreach ($validated['services'] ?? [] as $srv) {
-            $service = Service::findOrFail($srv['service_id']);
-            $subtotal = $service->price * $srv['quantity'];
-            $serviceTotal += $subtotal;
-            $services[$srv['service_id']] = ['quantity' => $srv['quantity']];
-        }
-
-        $rawTotal = $roomTotal + $serviceTotal;
-
-        // Khuyến mãi
-        $discount = 0;
+        $roomTotal = $serviceTotal = $discount = 0;
+        $roomsData = $services = [];
         $promotion = null;
-        if (!empty($validated['promotion_code'])) {
-            $promotion = Promotion::where('code', $validated['promotion_code'])->first();
-            if ($promotion && $promotion->isValid()) {
-                $discount = $promotion->discount_type === 'percent'
-                    ? $rawTotal * ($promotion->discount_value / 100)
-                    : $promotion->discount_value;
+
+        if ($shouldRecalculate) {
+            $nights = Carbon::parse($validated['check_in_date'])->diffInDays($validated['check_out_date']);
+            $rooms = Room::with('roomType')->whereIn('id', $validated['room_ids'])->get();
+
+            foreach ($rooms as $room) {
+                $rate = $room->roomType->base_rate ?? 0;
+                $roomTotal += $rate * $nights;
+                $roomsData[$room->id] = ['rate' => $rate];
+            }
+
+            foreach ($validated['services'] ?? [] as $srv) {
+                $service = Service::findOrFail($srv['service_id']);
+                $subtotal = $service->price * $srv['quantity'];
+                $serviceTotal += $subtotal;
+                $services[$srv['service_id']] = ['quantity' => $srv['quantity']];
+            }
+
+            $rawTotal = $roomTotal + $serviceTotal;
+
+            if (!empty($validated['promotion_code'])) {
+                $promotion = Promotion::where('code', $validated['promotion_code'])->first();
+                if ($promotion && $promotion->isValid()) {
+                    $discount = $promotion->discount_type === 'percent'
+                        ? $rawTotal * ($promotion->discount_value / 100)
+                        : $promotion->discount_value;
+                }
+            }
+
+            $booking->raw_total = $rawTotal;
+            $booking->discount_amount = $discount;
+            $booking->total_amount = max(0, $rawTotal - $discount);
+
+            $booking->rooms()->sync($roomsData);
+            $booking->services()->sync($services);
+
+            if ($promotion) {
+                $booking->promotions()->sync([
+                    $promotion->id => [
+                        'promotion_code' => $promotion->code,
+                        'applied_at' => now()
+                    ]
+                ]);
+            } else {
+                $booking->promotions()->detach();
             }
         }
 
-        // Cập nhật đơn
-        $booking->update([
-            'customer_id'     => $customer->id,
-            'check_in_date'   => $validated['check_in_date'],
-            'check_out_date'  => $validated['check_out_date'],
-            'raw_total'       => $rawTotal,
-            'discount_amount' => $discount,
-            'total_amount'    => max(0, $rawTotal - $discount),
-            'deposit_amount'  => $validated['deposit_amount'] ?? 0,
-        ]);
-
-        // Cập nhật các liên kết nhiều-nhiều
-        $booking->rooms()->sync($roomsData);
-        $booking->services()->sync($services);
-
-        if ($promotion) {
-            $booking->promotions()->sync([
-                $promotion->id => [
-                    'promotion_code' => $promotion->code,
-                    'applied_at' => now()
-                ]
-            ]);
-        } else {
-            $booking->promotions()->detach(); // nếu bỏ khuyến mãi
+        // Trạng thái và thời gian check-in/out
+        $status = $booking->status;
+        if (!empty($validated['check_in_at'])) {
+            $booking->check_in_at = $validated['check_in_at'];
+            $status = 'Checked-in';
         }
+
+        if (!empty($validated['check_out_at'])) {
+            $booking->check_out_at = $validated['check_out_at'];
+            $status = 'Checked-out';
+        }
+
+        // Cập nhật booking cuối cùng
+        $booking->fill([
+            'customer_id'    => $customer->id,
+            'check_in_date'  => $validated['check_in_date'],
+            'check_out_date' => $validated['check_out_date'],
+            'deposit_amount' => $validated['deposit_amount'] ?? 0,
+            'status'         => $status,
+        ])->save();
 
         return response()->json([
             'message' => 'Cập nhật đơn đặt phòng thành công',
-            'data' => $booking->load(['customer', 'rooms.roomType', 'services', 'promotions']),
-            'room_total' => $roomTotal,
-            'service_total' => $serviceTotal,
+            'data' => $booking->fresh()->load(['customer', 'rooms.roomType', 'services', 'promotions']),
         ]);
     }
+
 
 
     public function addServices(Request $request, $id)
