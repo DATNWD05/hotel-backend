@@ -11,18 +11,18 @@ use Carbon\Carbon;
 class Booking extends Model
 {
     protected $fillable = [
-    'customer_id',
-    'created_by',
-    'status',
-    'check_in_date',
-    'check_out_date',
-    'check_in_at',
-    'check_out_at',
-    'raw_total',
-    'discount_amount',
-    'total_amount',
-    'deposit_amount',
-];
+        'customer_id',
+        'created_by',
+        'status',
+        'check_in_date',
+        'check_out_date',
+        'check_in_at',
+        'check_out_at',
+        'raw_total',
+        'discount_amount',
+        'total_amount',
+        'deposit_amount',
+    ];
 
 
     // Quan hệ khách hàng
@@ -49,9 +49,10 @@ class Booking extends Model
     public function services(): BelongsToMany
     {
         return $this->belongsToMany(Service::class, 'booking_service')
-            ->withPivot('quantity')
+            ->withPivot(['room_id', 'quantity'])
             ->withTimestamps();
     }
+
 
     // Khuyến mãi áp dụng
     public function promotions(): BelongsToMany
