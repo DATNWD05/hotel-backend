@@ -97,6 +97,7 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         [RoomTypeController::class, 'syncAmenities']
     );
 
+
     // Thống kê
     Route::prefix('statistics')->group(function () {
         // Tổng doanh thu toàn hệ thống
@@ -138,6 +139,7 @@ Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
+    Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
 });
 
 Route::post('/register', [AuthController::class, 'register']);

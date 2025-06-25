@@ -136,4 +136,21 @@ class CustomerController extends Controller
         $customer->update($data);
         return response()->json($customer);
     }
+
+    public function checkCccd($cccd)
+    {
+        $customer = Customer::where('cccd', $cccd)->first();
+
+        if ($customer) {
+            return response()->json([
+                'status' => 'exists',
+                'data' => $customer
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => 'not_found',
+            'message' => 'Không tìm thấy khách hàng với CCCD này.'
+        ], 404);
+    }
 }
