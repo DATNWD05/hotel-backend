@@ -295,35 +295,58 @@ class BookingController extends Controller
     {
         $request->validate([
             'services' => 'required|array|min:1',
+            'services.*.room_id' => 'required|exists:rooms,id',
             'services.*.service_id' => 'required|exists:services,id',
             'services.*.quantity' => 'required|integer|min:1',
         ]);
 
-        $booking = Booking::with('services')->findOrFail($id);
+        $booking = Booking::with(['services', 'rooms'])->findOrFail($id);
 
         foreach ($request->services as $srv) {
+            $roomId = $srv['room_id'];
             $serviceId = $srv['service_id'];
             $quantity = $srv['quantity'];
 
-            // Nếu dịch vụ đã tồn tại → cộng thêm số lượng
-            if ($booking->services->contains($serviceId)) {
-                $currentQty = $booking->services->firstWhere('id', $serviceId)->pivot->quantity;
-                $booking->services()->updateExistingPivot($serviceId, [
-                    'quantity' => $currentQty + $quantity,
-                ]);
+            // Kiểm tra phòng có thuộc booking không
+            if (!$booking->rooms->contains('id', $roomId)) {
+                return response()->json([
+                    'message' => "Phòng ID {$roomId} không thuộc booking này."
+                ], 422);
+            }
+
+            // Kiểm tra xem đã tồn tại chưa
+            $existing = DB::table('booking_service')
+                ->where('booking_id', $booking->id)
+                ->where('service_id', $serviceId)
+                ->where('room_id', $roomId)
+                ->first();
+
+            if ($existing) {
+                DB::table('booking_service')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'quantity' => $existing->quantity + $quantity,
+                        'updated_at' => now()
+                    ]);
             } else {
-                $booking->services()->attach($serviceId, ['quantity' => $quantity]);
+                DB::table('booking_service')->insert([
+                    'booking_id' => $booking->id,
+                    'room_id' => $roomId,
+                    'service_id' => $serviceId,
+                    'quantity' => $quantity,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
             }
         }
 
-        $booking->load('services');
-
-        // Cập nhật lại tổng tiền
+        // Reload để tính lại tổng tiền
+        $booking->load(['services', 'rooms.roomType']);
         $booking->recalculateTotal();
 
         return response()->json([
-            'message' => 'Thêm dịch vụ thành công',
-            'data' => $booking->load('services')
+            'message' => 'Thêm dịch vụ theo phòng thành công',
+            'data' => $booking->load(['services'])
         ]);
     }
 }
