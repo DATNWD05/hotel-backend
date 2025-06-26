@@ -37,4 +37,10 @@ class RoomType extends Model
             'amenity_id'
         )->withPivot('quantity');
     }
+
+     // Quan hệ với bảng room_prices
+    public function roomPrices()
+    {
+        return $this->hasMany(RoomPrice::class);
+    }
 }
