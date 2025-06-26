@@ -1,6 +1,7 @@
 <?php
 
 
+use App\Http\Controllers\Api\VNPayController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -158,3 +159,9 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     // Hóa đơn
     Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
 });
+
+
+
+
+Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
+Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
