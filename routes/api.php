@@ -9,26 +9,27 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomController;
 
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\RoomPriceController;
 use App\Http\Controllers\Api\AmenityController;
+
 use App\Http\Controllers\Api\BookingController;
 
 use App\Http\Controllers\Api\InvoiceController;
-
-use App\Http\Controllers\Api\ServiceController;
 // use App\Http\Controllers\Api\FloorController;
+use App\Http\Controllers\Api\ServiceController;
+
 use App\Http\Controllers\Api\CustomerController;
 
 use App\Http\Controllers\Api\EmployeeController;
-
 use App\Http\Controllers\Api\RoomTypeController;
-use App\Http\Controllers\Api\PromotionController;
 
+use App\Http\Controllers\Api\PromotionController;
 use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
+
 use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\BookingPromotionController;
-
-use App\Http\Controllers\Api\StatisticsController;
 
 
 Route::middleware(['auth:sanctum', "role:1"])->group(function () {
@@ -130,6 +131,15 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         // 10. Tổng số booking theo tháng
         Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
     });
+
+    // Quản lý giá phòng
+
+Route::get('/room-prices', [RoomPriceController::class, 'index']); // Lấy tất cả giá phòng
+Route::post('/room-prices', [RoomPriceController::class, 'store']); // Thêm giá phòng
+Route::put('/room-prices/{id}', [RoomPriceController::class, 'update']); // Cập nhật giá phòng
+Route::delete('/room-prices/{id}', [RoomPriceController::class, 'destroy']); // Xóa giá phòng
+
+
 });
 
 
