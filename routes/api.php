@@ -132,14 +132,12 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
     });
 
-    // Quản lý giá phòng
+        // Quản lý giá phòng
 
-Route::get('/room-prices', [RoomPriceController::class, 'index']); // Lấy tất cả giá phòng
-Route::post('/room-prices', [RoomPriceController::class, 'store']); // Thêm giá phòng
-Route::put('/room-prices/{id}', [RoomPriceController::class, 'update']); // Cập nhật giá phòng
-Route::delete('/room-prices/{id}', [RoomPriceController::class, 'destroy']); // Xóa giá phòng
-
-
+    Route::get('/room-prices', [RoomPriceController::class, 'index']); // Lấy tất cả giá phòng
+    Route::post('/room-prices', [RoomPriceController::class, 'store']); // Thêm giá phòng
+    Route::put('/room-prices/{id}', [RoomPriceController::class, 'update']); // Cập nhật giá phòng
+    Route::delete('/room-prices/{id}', [RoomPriceController::class, 'destroy']); // Xóa giá phòng
 });
 
 

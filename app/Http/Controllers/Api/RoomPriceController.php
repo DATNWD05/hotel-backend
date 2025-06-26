@@ -19,10 +19,9 @@ class RoomPriceController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'room_type_id' => 'required|exists:room_types,id',
+            'room_types_id' => 'required|exists:room_types,id',
             'name' => 'required|string',
             'price' => 'required|numeric',
-            'currency' => 'nullable|string',
             'status' => 'required|in:active,inactive',
             'default' => 'nullable|boolean',
         ]);

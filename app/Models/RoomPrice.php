@@ -9,6 +9,8 @@ class RoomPrice extends Model
 {
     use HasFactory;
 
+    protected $fillable = ['room_types_id', 'name', 'price', 'status', 'default'];
+
     // Quan hệ với bảng room_types
     public function roomType()
     {
