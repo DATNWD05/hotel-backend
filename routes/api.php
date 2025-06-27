@@ -158,6 +158,7 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
     Route::post('/check-in/{id}', [BookingController::class, 'checkIn']);
 
+    Route::post('/bookings/{id}/remove-service', [BookingController::class, 'removeService']);
 
     // Hóa đơn
     Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
