@@ -312,26 +312,32 @@ class BookingController extends Controller
         $booking = Booking::with(['services', 'rooms'])->findOrFail($id);
 
         foreach ($validated['services'] as $srv) {
-            $roomId = $srv['room_id'];
-            $serviceId = $srv['service_id'];
-            $quantity = $srv['quantity'];
+            $roomId     = $srv['room_id'] ?? null;
+            $serviceId  = $srv['service_id'];
+            $quantity   = $srv['quantity'];
 
-            if (!$booking->rooms->contains('id', $roomId)) {
+            // Nếu có room_id thì kiểm tra phòng có thuộc booking không
+            if ($roomId && !$booking->rooms->contains('id', $roomId)) {
                 return response()->json([
                     'message' => "Phòng ID {$roomId} không thuộc booking này."
                 ], 422);
             }
 
+            // Kiểm tra dịch vụ đã có chưa (theo room_id hoặc null)
             $existing = DB::table('booking_service')
-                ->where([
-                    'booking_id' => $booking->id,
-                    'room_id'    => $roomId,
-                    'service_id' => $serviceId
-                ])
+                ->where('booking_id', $booking->id)
+                ->where('service_id', $serviceId)
+                ->where(function ($query) use ($roomId) {
+                    if (is_null($roomId)) {
+                        $query->whereNull('room_id');
+                    } else {
+                        $query->where('room_id', $roomId);
+                    }
+                })
                 ->first();
 
             if ($existing) {
-                // Nếu đã có, cập nhật số lượng
+                // Nếu đã có thì cập nhật số lượng
                 DB::table('booking_service')
                     ->where('id', $existing->id)
                     ->update([
@@ -339,10 +345,10 @@ class BookingController extends Controller
                         'updated_at' => now()
                     ]);
             } else {
-                // Nếu chưa có, insert mới
+                // Nếu chưa có thì thêm mới
                 DB::table('booking_service')->insert([
                     'booking_id' => $booking->id,
-                    'room_id'    => $roomId,
+                    'room_id'    => $roomId, // Có thể null
                     'service_id' => $serviceId,
                     'quantity'   => $quantity,
                     'created_at' => now(),
@@ -351,12 +357,12 @@ class BookingController extends Controller
             }
         }
 
-        // Tải lại booking với quan hệ đầy đủ để cập nhật tổng tiền
-        $booking->load(['services', 'rooms.roomType']);
+        // Tính lại tổng tiền
+        $booking->load(['services', 'rooms.roomType', 'promotions']);
         $booking->recalculateTotal();
 
         return response()->json([
-            'message' => 'Thêm dịch vụ theo phòng thành công',
+            'message' => 'Thêm dịch vụ thành công',
             'data'    => $booking->load(['services'])
         ]);
     }
