@@ -112,9 +112,17 @@ class VNPayController extends Controller
 
                 if ($booking) {
                     if ($returnData['vnp_ResponseCode'] == '00') {
-                        // Thanh toán thành công, cập nhật status thành "Checked-out"
-                        $booking->update(['status' => 'Checked-out']);
-                        $booking->update(['check_out_at' => date('YmdHis')]);
+                        // Thanh toán thành công
+                        $booking->update([
+                            'status' => 'Checked-out',
+                            'check_out_at' => now()
+                        ]);
+
+                        // Cập nhật trạng thái phòng về 'available'
+                        foreach ($booking->rooms as $room) {
+                            $room->update(['status' => 'available']);
+                        }
+
                         return response()->json([
                             'success' => true,
                             'message' => 'Thanh toán thành công',
