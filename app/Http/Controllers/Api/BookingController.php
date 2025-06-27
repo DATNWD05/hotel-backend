@@ -304,7 +304,7 @@ class BookingController extends Controller
     {
         $validated = $request->validate([
             'services' => 'required|array|min:1',
-            'services.*.room_id'    => 'required|exists:rooms,id',
+            'services.*.room_id'    => 'nullable|exists:rooms,id',
             'services.*.service_id' => 'required|exists:services,id',
             'services.*.quantity'   => 'required|integer|min:1',
         ]);
