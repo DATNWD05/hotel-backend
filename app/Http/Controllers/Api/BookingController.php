@@ -403,7 +403,7 @@ class BookingController extends Controller
             return response()->json(['error' => 'Không tìm thấy booking'], 404);
         }
 
-        if (!in_array($booking->status, ['Pending', 'Booked'])) {
+        if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
             return response()->json([
                 'error' => 'Booking hiện không ở trạng thái cho phép check-in'
             ], 400);
@@ -442,25 +442,101 @@ class BookingController extends Controller
 
     public function checkOut($id)
     {
-        $booking = Booking::with(['rooms.roomType', 'services'])->find($id);
+        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
 
-        if (!$booking) {
-            return response()->json(['error' => 'Không tìm thấy đơn đặt phòng'], 404);
+        try {
+            $totals = $this->calculateBookingTotals($booking);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
 
-        $checkIn = Carbon::parse($booking->check_in_date);
-        $checkOut = Carbon::parse($booking->check_out_date);
+        return response()->json([
+            'message' => 'Thông tin trước khi thực hiện checkout',
+            'booking_id' => $booking->id,
+            'room_details' => $totals['room_details'],
+            'nights' => $totals['nights'],
+            'room_total' => $totals['room_total'],
+            'service_total' => $totals['service_total'],
+            'discount_amount' => $totals['discount'],
+            'raw_total' => $totals['raw_total'],
+            'total_amount' => $totals['total_amount'],
+            'status' => $booking->status,
+        ]);
+    }
 
-        // Nếu ngày check-out nằm trước check-in, trả lỗi
-        if ($checkOut->isBefore($checkIn)) {
+
+    public function cancel($id)
+    {
+        $booking = Booking::findOrFail($id);
+
+        // Nếu đã check-out hoặc đang ở thì không cho huỷ
+        if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
             return response()->json([
-                'error' => 'Ngày check-out không hợp lệ (trước ngày check-in)'
+                'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
             ], 400);
         }
 
+        $booking->status = 'Canceled';
+        $booking->save();
+
+        return response()->json([
+            'message' => 'Huỷ đơn đặt phòng thành công!',
+            'booking_id' => $booking->id,
+            'status' => $booking->status
+        ]);
+    }
+
+    public function payByCash($id)
+    {
+        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
+
+        if ($booking->status === 'Checked-out') {
+            return response()->json(['error' => 'Đơn này đã được thanh toán!'], 400);
+        }
+
+        try {
+            $totals = $this->calculateBookingTotals($booking);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+
+        $booking->status = 'Checked-out';
+        $booking->total_amount = $totals['total_amount'];
+        $booking->check_out_at = now();
+        $booking->save();
+
+        // cập nhật lại trạng thái của phòng
+        foreach ($booking->rooms as $room) {
+            $room->status = 'available';
+            $room->save();
+        }
+
+        return response()->json([
+            'message' => 'Thanh toán tiền mặt và trả phòng thành công!',
+            'booking_id' => $booking->id,
+            'nights' => $totals['nights'],
+            'room_details' => $totals['room_details'],
+            'room_total' => $totals['room_total'],
+            'service_total' => $totals['service_total'],
+            'discount_amount' => $totals['discount'],
+            'raw_total' => $totals['raw_total'],
+            'total_amount' => $totals['total_amount'],
+            'status' => $booking->status,
+            'check_out_at' => $booking->check_out_at,
+        ]);
+    }
+
+
+    private function calculateBookingTotals($booking)
+    {
+        $checkIn = Carbon::parse($booking->check_in_date);
+        $checkOut = Carbon::parse($booking->check_out_date);
+
+        if ($checkOut->lt($checkIn)) {
+            throw new \Exception('Ngày check-out không hợp lệ (trước ngày check-in)');
+        }
+
         $nights = $checkIn->diffInDays($checkOut);
-
-
 
         // Tính tiền phòng
         $roomTotal = 0;
@@ -486,51 +562,22 @@ class BookingController extends Controller
             $serviceTotal += floatval($service->price) * $quantity;
         }
 
-        // Tính giảm giá
+        // Giảm giá
         $discountPercent = floatval($booking->discount_amount ?? 0);
         $rawTotal = $roomTotal + $serviceTotal;
         $discount = ($discountPercent > 0) ? ($rawTotal * $discountPercent / 100) : 0;
 
-        // Tổng tiền
+        // Tổng tiền cuối
         $totalAmount = $rawTotal - $discount;
 
-        // Cập nhật Booking
-        $booking->status = 'Checked-out';
-        $booking->total_amount = $totalAmount;
-        $booking->save();
-
-        return response()->json([
-            'message' => 'Check-out thành công!',
-            'booking_id' => $booking->id,
-            'room_details' => $roomDetails,
+        return [
+            'nights' => $nights,
             'room_total' => $roomTotal,
+            'room_details' => $roomDetails,
             'service_total' => $serviceTotal,
-            'discount_amount' => $discount,
+            'discount' => $discount,
             'raw_total' => $rawTotal,
             'total_amount' => $totalAmount,
-            'nights' => $nights,
-            'status' => $booking->status,
-        ]);
-    }
-
-    public function cancel($id)
-    {
-        $booking = Booking::findOrFail($id);
-
-        // Nếu đã check-out hoặc đang ở thì không cho huỷ
-        if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
-            return response()->json([
-                'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
-            ], 400);
-        }
-
-        $booking->status = 'Canceled';
-        $booking->save();
-
-        return response()->json([
-            'message' => 'Huỷ đơn đặt phòng thành công!',
-            'booking_id' => $booking->id,
-            'status' => $booking->status
-        ]);
+        ];
     }
 }

@@ -158,7 +158,8 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     // xử lí trạng thái bookings
     Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
     Route::post('/check-in/{id}', [BookingController::class, 'checkIn']);
-    Route::get('/checkout/{id}', [BookingController::class, 'checkOut']);
+    Route::get('/check-out/{id}', [BookingController::class, 'checkOut']);
+    Route::post('/pay-cash/{id}', [BookingController::class, 'payByCash']);
     Route::post('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
 
 
