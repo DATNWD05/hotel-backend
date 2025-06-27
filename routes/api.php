@@ -1,8 +1,6 @@
 <?php
 
-
 use App\Http\Controllers\Api\VNPayController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\AuthController;
@@ -16,7 +14,6 @@ use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\InvoiceController;
 
 use App\Http\Controllers\Api\ServiceController;
-// use App\Http\Controllers\Api\FloorController;
 use App\Http\Controllers\Api\CustomerController;
 
 use App\Http\Controllers\Api\EmployeeController;
@@ -30,7 +27,6 @@ use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\BookingPromotionController;
 
 use App\Http\Controllers\Api\StatisticsController;
-
 
 Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -100,19 +96,19 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
 
     // Thống kê
     Route::prefix('statistics')->group(function () {
-        // Tổng doanh thu toàn hệ thống
+        // 1. Tổng doanh thu toàn hệ thống
         Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
 
-        // Doanh thu từng ngày
+        // 2. Doanh thu từng ngày
         Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
 
-        // Tổng chi phí từng booking
+        // 3. Tổng chi phí từng booking
         Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
 
         // 4. Doanh thu theo khách hàng
         Route::get('/revenue-by-customer', [StatisticsController::class, 'revenueByCustomer']);
 
-        // Doanh thu theo phòng
+        // 5. Doanh thu theo phòng
         Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
 
         // 6. Tỷ lệ lấp đầy phòng
@@ -129,6 +125,15 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
 
         // 10. Tổng số booking theo tháng
         Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
+
+        // 11. Doanh thu theo loại phòng
+        Route::get('/revenue-by-room-type', [StatisticsController::class, 'revenueByRoomType']);
+
+        // 12. Tổng doanh thu từ dịch vụ
+        Route::get('/total-service-revenue', [StatisticsController::class, 'totalServiceRevenue']);
+
+        // 13. Số lượng phòng được đặt theo loại
+        Route::get('/room-type-booking-count', [StatisticsController::class, 'roomTypeBookingCount']);
     });
 });
 
