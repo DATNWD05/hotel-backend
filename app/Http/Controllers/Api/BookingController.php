@@ -366,4 +366,117 @@ class BookingController extends Controller
             'data'    => $booking->load(['services'])
         ]);
     }
+
+    // thông tin khi checkin
+    public function showCheckInInfo($id)
+    {
+        $booking = Booking::with([
+            'customer',
+            'creator',
+            'rooms.roomType.amenities',
+            'services',
+            'promotions'
+        ])->find($id);
+
+        if (!$booking) {
+            return response()->json(['error' => 'Không tìm thấy booking'], 404);
+        }
+
+        return response()->json([
+            'booking_id' => $booking->id,
+            'status' => $booking->status,
+            'check_in_date' => $booking->check_in_date,
+            'check_out_date' => $booking->check_out_date,
+            'deposit_amount' => $booking->deposit_amount,
+            'total_amount' => $booking->total_amount,
+            'raw_total' => $booking->raw_total,
+            'discount_amount' => $booking->discount_amount,
+            'customer' => [
+                'name' => $booking->customer->name,
+                'gender' => $booking->customer->gender,
+                'email' => $booking->customer->email,
+                'phone' => $booking->customer->phone,
+                'cccd' => $booking->customer->cccd,
+                'nationality' => $booking->customer->nationality,
+                'address' => $booking->customer->address,
+            ],
+            'rooms' => $booking->rooms->map(function ($room) {
+                return [
+                    'room_number' => $room->room_number,
+                    'status' => $room->status,
+                    'image' => $room->image,
+                    'rate' => $room->pivot->rate,
+                    'type' => [
+                        'name' => $room->roomType->name ?? null,
+                        'max_occupancy' => $room->roomType->max_occupancy ?? null,
+                        'amenities' => $room->roomType->amenities->map(function ($amenity) {
+                            return [
+                                'name' => $amenity->name,
+                                'icon' => $amenity->icon,
+                                'quantity' => $amenity->pivot->quantity ?? 1
+                            ];
+                        })
+                    ]
+                ];
+            }),
+            'services' => $booking->services->map(function ($service) {
+                return [
+                    'name' => $service->name,
+                    'description' => $service->description,
+                    'price' => $service->price,
+                    'quantity' => $service->pivot->quantity
+                ];
+            }),
+            'created_by' => $booking->creator->name ?? null
+        ]);
+    }
+
+    /**
+     * API thực hiện hành động check-in
+     * POST /api/check-in/{id}
+     */
+    public function checkIn($id, Request $request)
+    {
+        $booking = Booking::with('rooms')->find($id);
+
+        if (!$booking) {
+            return response()->json(['error' => 'Không tìm thấy booking'], 404);
+        }
+
+        if (!in_array($booking->status, ['Pending', 'Booked'])) {
+            return response()->json([
+                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            $booking->status = 'Checked-in';
+            $booking->check_in_at = now();
+            $booking->save();
+
+            foreach ($booking->rooms as $room) {
+                $room->update(['status' => 'booked']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Check-in thành công',
+                'booking_id' => $booking->id,
+                'check_in_at' => $booking->check_in_at,
+                'rooms' => $booking->rooms->map(fn($room) => [
+                    'room_number' => $room->room_number,
+                    'status' => $room->status
+                ])
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'Đã xảy ra lỗi khi check-in',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

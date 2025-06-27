@@ -1,6 +1,7 @@
 <?php
 
 
+use App\Http\Controllers\Api\VNPayController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -97,7 +98,6 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         [RoomTypeController::class, 'syncAmenities']
     );
 
-
     // Thống kê
     Route::prefix('statistics')->group(function () {
         // Tổng doanh thu toàn hệ thống
@@ -154,7 +154,17 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
     Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
+    // checkin
+    Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
+    Route::post('/check-in/{id}', [BookingController::class, 'checkIn']);
+
 
     // Hóa đơn
     Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
 });
+
+
+
+
+Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
+Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
