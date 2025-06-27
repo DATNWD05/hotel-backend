@@ -154,9 +154,14 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
     Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
-    // checkin
+
+    // xử lí trạng thái bookings
     Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
     Route::post('/check-in/{id}', [BookingController::class, 'checkIn']);
+    Route::get('/checkout/{id}', [BookingController::class, 'checkOut']);
+    Route::post('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
+
+
 
 
     // Hóa đơn
