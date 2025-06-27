@@ -135,6 +135,12 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
         // 13. Số lượng phòng được đặt theo loại
         Route::get('/room-type-booking-count', [StatisticsController::class, 'roomTypeBookingCount']);
     });
+
+    // 14. Bảng doanh thu
+    Route::get('/statistics/revenue-table', [StatisticsController::class, 'revenueTable']);
+
+    // 15. Dịch vụ đã sử dụng
+    Route::get('/statistics/booking-service-table', [StatisticsController::class, 'bookingServiceTable']);
 });
 
 
