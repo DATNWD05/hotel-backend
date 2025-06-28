@@ -7,22 +7,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class Booking extends Model
 {
     protected $fillable = [
-    'customer_id',
-    'created_by',
-    'status',
-    'check_in_date',
-    'check_out_date',
-    'check_in_at',
-    'check_out_at',
-    'raw_total',
-    'discount_amount',
-    'total_amount',
-    'deposit_amount',
-];
+        'customer_id',
+        'created_by',
+        'status',
+        'check_in_date',
+        'check_out_date',
+        'check_in_at',
+        'check_out_at',
+        'raw_total',
+        'discount_amount',
+        'total_amount',
+        'deposit_amount',
+    ];
 
 
     // Quan hệ khách hàng
@@ -49,9 +50,10 @@ class Booking extends Model
     public function services(): BelongsToMany
     {
         return $this->belongsToMany(Service::class, 'booking_service')
-            ->withPivot('quantity')
+            ->withPivot(['room_id', 'quantity'])
             ->withTimestamps();
     }
+
 
     // Khuyến mãi áp dụng
     public function promotions(): BelongsToMany
@@ -64,24 +66,25 @@ class Booking extends Model
     // Hàm tính lại tổng tiền
     public function recalculateTotal(): void
     {
-        // Đảm bảo các quan hệ cần thiết đã được load
-        $this->loadMissing(['rooms.roomType', 'services', 'promotions']);
+        // Load các quan hệ cần thiết nếu chưa có
+        $this->loadMissing(['rooms.roomType', 'promotions']);
 
         $nights = Carbon::parse($this->check_in_date)->diffInDays($this->check_out_date);
 
-        // Tổng tiền phòng theo nhiều phòng * số đêm
+        // Tính tổng tiền phòng
         $roomTotal = $this->rooms->sum(function ($room) use ($nights) {
             return ($room->roomType->base_rate ?? 0) * $nights;
         });
 
-        // Tổng tiền dịch vụ
-        $serviceTotal = $this->services->sum(function ($service) {
-            return $service->pivot->quantity * $service->price;
-        });
+        // Tính tổng tiền dịch vụ từ bảng trung gian booking_service
+        $serviceTotal = DB::table('booking_service')
+            ->join('services', 'services.id', '=', 'booking_service.service_id')
+            ->where('booking_id', $this->id)
+            ->sum(DB::raw('booking_service.quantity * services.price'));
 
         $raw = $roomTotal + $serviceTotal;
 
-        // Khuyến mãi nếu có
+        // Tính khuyến mãi nếu có
         $discount = 0;
         $promo = $this->promotions()->latest('pivot_applied_at')->first();
         if ($promo && $promo->isValid()) {
@@ -90,7 +93,7 @@ class Booking extends Model
                 : $promo->discount_value;
         }
 
-        // Cập nhật lại booking
+        // Cập nhật lại tổng tiền
         $this->forceFill([
             'raw_total'       => $raw,
             'discount_amount' => $discount,

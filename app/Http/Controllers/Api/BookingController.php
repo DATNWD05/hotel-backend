@@ -20,16 +20,54 @@ class BookingController extends Controller
      */
     public function index()
     {
-        return Booking::with(['customer', 'rooms.roomType.amenities', 'creator', 'services', 'promotions'])->get();
+        return Booking::with([
+            'customer',
+            'rooms.roomType.amenities',
+            'creator',
+            'services',
+            'promotions'
+        ])
+            ->orderByDesc('created_at')
+            ->get();
     }
+
 
     public function show($id)
     {
-        $booking = Booking::with(['customer', 'rooms.roomType.amenities', 'creator', 'services', 'promotions'])
-            ->findOrFail($id);
+        $booking = Booking::with([
+            'customer',
+            'rooms.roomType.amenities',
+            'creator',
+            'services',
+            'promotions',
+        ])->findOrFail($id);
 
-        return response()->json($booking);
+        // Lấy dịch vụ theo phòng
+        $servicesByRoom = DB::table('booking_service')
+            ->join('services', 'booking_service.service_id', '=', 'services.id')
+            ->select(
+                'booking_service.room_id',
+                'services.id as service_id',
+                'services.name',
+                'services.price',
+                'booking_service.quantity'
+            )
+            ->where('booking_id', $booking->id)
+            ->get()
+            ->groupBy('room_id');
+
+        // Thêm danh sách dịch vụ vào từng phòng
+        $booking->rooms->transform(function ($room) use ($servicesByRoom) {
+            $room->services = $servicesByRoom[$room->id] ?? collect();
+            return $room;
+        });
+
+        return response()->json([
+            'booking' => $booking,
+        ]);
     }
+
+
 
     public function store(Request $request)
     {
@@ -57,6 +95,7 @@ class BookingController extends Controller
             'services'               => 'nullable|array',
             'services.*.service_id'  => 'required|exists:services,id',
             'services.*.quantity'    => 'required|integer|min:1',
+            'services.*.room_id'     => 'nullable|exists:rooms,id',
 
             'promotion_code'         => 'nullable|string|exists:promotions,code',
             'deposit_amount'         => 'nullable|numeric|min:0',
@@ -102,11 +141,15 @@ class BookingController extends Controller
         });
 
         $serviceTotal = 0;
-        $servicesData = collect($validated['services'] ?? [])->mapWithKeys(function ($srv) use (&$serviceTotal) {
+        $servicesData = collect($validated['services'] ?? [])->map(function ($srv) use (&$serviceTotal) {
             $service = Service::findOrFail($srv['service_id']);
             $subtotal = $service->price * $srv['quantity'];
             $serviceTotal += $subtotal;
-            return [$srv['service_id'] => ['quantity' => $srv['quantity']]];
+            return [
+                'service_id' => $srv['service_id'],
+                'quantity' => $srv['quantity'],
+                'room_id' => $srv['room_id'] ?? null
+            ];
         });
 
         $rawTotal = $roomTotal + $serviceTotal;
@@ -135,7 +178,13 @@ class BookingController extends Controller
         ]);
 
         $booking->rooms()->attach($roomsData);
-        $booking->services()->attach($servicesData);
+
+        foreach ($servicesData as $service) {
+            $booking->services()->attach($service['service_id'], [
+                'quantity' => $service['quantity'],
+                'room_id' => $service['room_id']
+            ]);
+        }
 
         foreach ($booking->rooms as $room) {
             $room->update(['status' => 'booked']);
@@ -155,8 +204,6 @@ class BookingController extends Controller
             'service_total' => $serviceTotal,
         ]);
     }
-
-
 
     public function update(Request $request, $id)
     {
@@ -293,37 +340,68 @@ class BookingController extends Controller
 
     public function addServices(Request $request, $id)
     {
-        $request->validate([
+        $validated = $request->validate([
             'services' => 'required|array|min:1',
+            'services.*.room_id'    => 'nullable|exists:rooms,id',
             'services.*.service_id' => 'required|exists:services,id',
-            'services.*.quantity' => 'required|integer|min:1',
+            'services.*.quantity'   => 'required|integer|min:1',
         ]);
 
-        $booking = Booking::with('services')->findOrFail($id);
+        $booking = Booking::with(['services', 'rooms'])->findOrFail($id);
 
-        foreach ($request->services as $srv) {
-            $serviceId = $srv['service_id'];
-            $quantity = $srv['quantity'];
+        foreach ($validated['services'] as $srv) {
+            $roomId     = $srv['room_id'] ?? null;
+            $serviceId  = $srv['service_id'];
+            $quantity   = $srv['quantity'];
 
-            // Nếu dịch vụ đã tồn tại → cộng thêm số lượng
-            if ($booking->services->contains($serviceId)) {
-                $currentQty = $booking->services->firstWhere('id', $serviceId)->pivot->quantity;
-                $booking->services()->updateExistingPivot($serviceId, [
-                    'quantity' => $currentQty + $quantity,
-                ]);
+            // Nếu có room_id thì kiểm tra phòng có thuộc booking không
+            if ($roomId && !$booking->rooms->contains('id', $roomId)) {
+                return response()->json([
+                    'message' => "Phòng ID {$roomId} không thuộc booking này."
+                ], 422);
+            }
+
+            // Kiểm tra dịch vụ đã có chưa (theo room_id hoặc null)
+            $existing = DB::table('booking_service')
+                ->where('booking_id', $booking->id)
+                ->where('service_id', $serviceId)
+                ->where(function ($query) use ($roomId) {
+                    if (is_null($roomId)) {
+                        $query->whereNull('room_id');
+                    } else {
+                        $query->where('room_id', $roomId);
+                    }
+                })
+                ->first();
+
+            if ($existing) {
+                // Nếu đã có thì cập nhật số lượng
+                DB::table('booking_service')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'quantity'   => $existing->quantity + $quantity,
+                        'updated_at' => now()
+                    ]);
             } else {
-                $booking->services()->attach($serviceId, ['quantity' => $quantity]);
+                // Nếu chưa có thì thêm mới
+                DB::table('booking_service')->insert([
+                    'booking_id' => $booking->id,
+                    'room_id'    => $roomId, // Có thể null
+                    'service_id' => $serviceId,
+                    'quantity'   => $quantity,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
             }
         }
 
-        $booking->load('services');
-
-        // Cập nhật lại tổng tiền
+        // Tính lại tổng tiền
+        $booking->load(['services', 'rooms.roomType', 'promotions']);
         $booking->recalculateTotal();
 
         return response()->json([
             'message' => 'Thêm dịch vụ thành công',
-            'data' => $booking->load('services')
+            'data'    => $booking->load(['services'])
         ]);
     }
 
@@ -587,5 +665,46 @@ class BookingController extends Controller
             'raw_total' => $rawTotal,
             'total_amount' => $totalAmount,
         ];
+    }
+    
+    public function removeService(Request $request, $bookingId)
+    {
+        $validated = $request->validate([
+            'service_id' => 'required|exists:services,id',
+            'room_id'    => 'nullable|exists:rooms,id',
+        ]);
+
+        $booking = Booking::with('rooms')->findOrFail($bookingId);
+
+        // Nếu có room_id: chỉ xóa dịch vụ gắn với phòng đó
+        if (!empty($validated['room_id'])) {
+            // Kiểm tra phòng có thuộc booking không
+            if (!$booking->rooms->contains('id', $validated['room_id'])) {
+                return response()->json([
+                    'message' => "Phòng ID {$validated['room_id']} không thuộc booking này."
+                ], 422);
+            }
+
+            DB::table('booking_service')
+                ->where('booking_id', $booking->id)
+                ->where('service_id', $validated['service_id'])
+                ->where('room_id', $validated['room_id'])
+                ->delete();
+        } else {
+            // Xoá dịch vụ áp dụng chung cho booking (không theo phòng cụ thể)
+            DB::table('booking_service')
+                ->where('booking_id', $booking->id)
+                ->where('service_id', $validated['service_id'])
+                ->whereNull('room_id')
+                ->delete();
+        }
+
+        // Tính lại tổng tiền sau khi xoá
+        $booking->recalculateTotal();
+
+        return response()->json([
+            'message' => 'Xoá dịch vụ thành công',
+            'data' => $booking->load('services')
+        ]);
     }
 }
