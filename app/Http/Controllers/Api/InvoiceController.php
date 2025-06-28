@@ -23,7 +23,7 @@ class InvoiceController extends Controller
     // [3] API: Xem chi tiết hóa đơn
     public function show($id)
     {
-        $invoice = Invoice::with('booking')->find($id);
+        $invoice = Invoice::with('booking')->where("booking_id", "=", $id)->first();
 
         if (!$invoice) {
             return response()->json([
