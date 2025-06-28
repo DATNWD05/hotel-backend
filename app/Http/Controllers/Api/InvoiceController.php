@@ -6,10 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Mail\InvoiceMail;
 use App\Models\Invoice;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\File;
 
 class InvoiceController extends Controller
 {
@@ -54,23 +53,54 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Không tìm thấy thông tin khách hàng.'], 404);
         }
 
-        $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
-        $filePath = storage_path('app/public/invoice_' . $invoice->id . '.pdf');
-        $pdf->save($filePath);
-
-        $email = $invoice->booking->customer->email ?? null;
-
-        if (!$email) {
-            return response()->json(['message' => 'Khách hàng chưa có email.'], 400);
+        // Tạo thư mục invoices nếu chưa có
+        $directory = storage_path('app/public/invoices');
+        if (!File::exists($directory)) {
+            File::makeDirectory($directory, 0755, true);
         }
 
-        // Gửi mail kèm file
-        Mail::to($email)->send(new InvoiceMail($invoice, $filePath));
+        // Tạo PDF hóa đơn và lưu
+        $fileName = 'invoice_' . $invoice->id . '.pdf';
+        $filePath = $directory . '/' . $fileName;
+        $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
+        $pdf->save($filePath);
+
+        //Gửi email nếu có
+        $email = $invoice->booking->customer->email ?? null;
+        if ($email) {
+            Mail::to($email)->send(new InvoiceMail($invoice, $filePath));
+        }
+
+        // Gửi lệnh in
+        $this->printToPrinter($filePath);
+
+        // Trả về URL public cho frontend
+        $pdfUrl = asset('storage/invoices/' . $fileName);
 
         return response()->json([
-            'message' => 'Hóa đơn đã được gửi đến email khách hàng.',
+            'message' => 'Đã gửi email và gửi lệnh in hóa đơn.',
             'invoice_code' => $invoice->invoice_code,
-            'email' => $email
+            'email' => $email,
+            'pdf_url' => $pdfUrl
         ]);
+    }
+
+    // Hàm phụ dùng để in hóa đơn PDF
+    private function printToPrinter($filePath)
+    {
+        if (!file_exists($filePath)) {
+            Log::warning("Không tìm thấy file để in: $filePath");
+            return;
+        }
+
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            // In bằng lệnh rundll32 (mở PDF bằng mặc định rồi in)
+            $escapedPath = str_replace('/', '\\', $filePath);
+
+            // Mở bằng phần mềm mặc định để in (Adobe Reader, Chrome, ...)
+            $command = "start /min \"\" \"" . $escapedPath . "\"";
+
+            pclose(popen("start /B cmd /C \"$command\"", "r"));
+        }
     }
 }
