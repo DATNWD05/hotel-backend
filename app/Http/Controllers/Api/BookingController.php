@@ -481,7 +481,7 @@ class BookingController extends Controller
             return response()->json(['error' => 'Không tìm thấy booking'], 404);
         }
 
-        if (!in_array($booking->status, ['Pending', 'Booked'])) {
+        if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
             return response()->json([
                 'error' => 'Booking hiện không ở trạng thái cho phép check-in'
             ], 400);
@@ -516,6 +516,155 @@ class BookingController extends Controller
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function checkOut($id)
+    {
+        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
+
+        try {
+            $totals = $this->calculateBookingTotals($booking);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+
+        return response()->json([
+            'message' => 'Thông tin trước khi thực hiện checkout',
+            'booking_id' => $booking->id,
+            'room_details' => $totals['room_details'],
+            'nights' => $totals['nights'],
+            'room_total' => $totals['room_total'],
+            'service_total' => $totals['service_total'],
+            'discount_amount' => $totals['discount'],
+            'raw_total' => $totals['raw_total'],
+            'total_amount' => $totals['total_amount'],
+            'status' => $booking->status,
+        ]);
+    }
+
+
+    public function cancel($id)
+    {
+        $booking = Booking::findOrFail($id);
+
+        // Nếu đã check-out hoặc đang ở thì không cho huỷ
+        if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
+            return response()->json([
+                'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
+            ], 400);
+        }
+
+        $booking->status = 'Canceled';
+        $booking->save();
+
+        return response()->json([
+            'message' => 'Huỷ đơn đặt phòng thành công!',
+            'booking_id' => $booking->id,
+            'status' => $booking->status
+        ]);
+    }
+
+    public function payByCash($id)
+    {
+        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
+
+        if ($booking->status === 'Checked-out') {
+            return response()->json(['error' => 'Đơn này đã được thanh toán!'], 400);
+        }
+
+        try {
+            $totals = $this->calculateBookingTotals($booking);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+
+        $booking->status = 'Checked-out';
+        $booking->total_amount = $totals['total_amount'];
+        $booking->check_out_at = now();
+        $booking->save();
+
+        // cập nhật lại trạng thái của phòng
+        foreach ($booking->rooms as $room) {
+            $room->status = 'available';
+            $room->save();
+        }
+
+        return response()->json([
+            'message' => 'Thanh toán tiền mặt và trả phòng thành công!',
+            'booking_id' => $booking->id,
+            'nights' => $totals['nights'],
+            'room_details' => $totals['room_details'],
+            'room_total' => $totals['room_total'],
+            'service_total' => $totals['service_total'],
+            'discount_amount' => $totals['discount'],
+            'raw_total' => $totals['raw_total'],
+            'total_amount' => $totals['total_amount'],
+            'status' => $booking->status,
+            'check_out_at' => $booking->check_out_at,
+        ]);
+    }
+
+
+    private function calculateBookingTotals($booking)
+    {
+        $checkIn = Carbon::parse($booking->check_in_date);
+        $checkOut = Carbon::parse($booking->check_out_date);
+
+        if ($checkOut->lt($checkIn)) {
+            throw new \Exception('Ngày check-out không hợp lệ (trước ngày check-in)');
+        }
+
+        $nights = $checkIn->diffInDays($checkOut);
+
+        // Tính tiền phòng
+        $roomTotal = 0;
+        $roomDetails = [];
+
+        foreach ($booking->rooms as $room) {
+            $rate = floatval(optional($room->roomType)->base_rate ?? 0);
+            $total = $rate * $nights;
+
+            $roomTotal += $total;
+
+            $roomDetails[] = [
+                'room_number' => $room->room_number,
+                'base_rate' => $rate,
+                'total' => $total
+            ];
+        }
+
+        // Tính tiền dịch vụ
+        $serviceTotal = 0;
+        foreach ($booking->services as $service) {
+            $quantity = intval($service->pivot->quantity ?? 1);
+            $serviceTotal += floatval($service->price) * $quantity;
+        }
+
+        // giảm giá
+        $discountAmount = floatval($booking->discount_amount ?? 0);
+        $discountType = $booking->discount_type ?? 'percent';
+        $rawTotal = $roomTotal + $serviceTotal;
+
+        if ($discountType === 'percent') {
+            $discount = ($discountAmount > 0) ? ($rawTotal * $discountAmount / 100) : 0;
+        } elseif ($discountType === 'amount') {
+            $discount = min($discountAmount, $rawTotal); // không cho trừ quá
+        } else {
+            $discount = 0; // fallback
+        }
+
+        $totalAmount = $rawTotal - $discount;
+
+
+        return [
+            'nights' => $nights,
+            'room_total' => $roomTotal,
+            'room_details' => $roomDetails,
+            'service_total' => $serviceTotal,
+            'discount' => $discount,
+            'raw_total' => $rawTotal,
+            'total_amount' => $totalAmount,
+        ];
     }
     
     public function removeService(Request $request, $bookingId)
