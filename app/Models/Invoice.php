@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Invoice extends Model
 {
     protected $fillable = [
+        'invoice_code',
         'booking_id',
         'issued_date',
         'room_amount',
@@ -15,6 +16,7 @@ class Invoice extends Model
         'deposit_amount',
         'total_amount',
     ];
+
 
     public function booking()
     {

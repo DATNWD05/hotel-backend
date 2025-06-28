@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Promotion;
 use App\Models\Room;
 use App\Models\Service;
@@ -573,35 +575,69 @@ class BookingController extends Controller
         }
 
         try {
+            DB::beginTransaction();
+
             $totals = $this->calculateBookingTotals($booking);
+
+            // Cập nhật trạng thái booking
+            $booking->status = 'Checked-out';
+            $booking->total_amount = $totals['total_amount'];
+            $booking->check_out_at = now();
+            $booking->save();
+
+            // Cập nhật trạng thái phòng
+            foreach ($booking->rooms as $room) {
+                $room->status = 'available';
+                $room->save();
+            }
+
+            // Tạo invoice
+            $today = now()->format('Ymd');
+            $countToday = Invoice::whereDate('issued_date', today())->count() + 1;
+            $invoiceCode = 'INV-' . $today . '-' . str_pad($countToday, 3, '0', STR_PAD_LEFT);
+
+            $invoice = Invoice::create([
+                'invoice_code' => $invoiceCode,
+                'booking_id' => $booking->id,
+                'issued_date' => now(),
+                'room_amount' => $totals['room_total'],
+                'service_amount' => $totals['service_total'],
+                'discount_amount' => $totals['discount'],
+                'deposit_amount' => $booking->deposit_amount ?? 0,
+                'total_amount' => $totals['total_amount'],
+            ]);
+
+
+            // Tạo payment
+            Payment::create([
+                'invoice_id' => $invoice->id,
+                'amount' => $totals['total_amount'],
+                'method' => 'cash',
+                'transaction_code' => null,
+                'paid_at' => now(),
+                'status' => 'success',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Thanh toán tiền mặt và trả phòng thành công!',
+                'booking_id' => $booking->id,
+                'nights' => $totals['nights'],
+                'room_details' => $totals['room_details'],
+                'room_total' => $totals['room_total'],
+                'service_total' => $totals['service_total'],
+                'discount_amount' => $totals['discount'],
+                'raw_total' => $totals['raw_total'],
+                'total_amount' => $totals['total_amount'],
+                'invoice_id' => $invoice->id,
+                'status' => $booking->status,
+                'check_out_at' => $booking->check_out_at,
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+            DB::rollBack();
+            return response()->json(['error' => 'Lỗi khi thanh toán: ' . $e->getMessage()], 500);
         }
-
-        $booking->status = 'Checked-out';
-        $booking->total_amount = $totals['total_amount'];
-        $booking->check_out_at = now();
-        $booking->save();
-
-        // cập nhật lại trạng thái của phòng
-        foreach ($booking->rooms as $room) {
-            $room->status = 'available';
-            $room->save();
-        }
-
-        return response()->json([
-            'message' => 'Thanh toán tiền mặt và trả phòng thành công!',
-            'booking_id' => $booking->id,
-            'nights' => $totals['nights'],
-            'room_details' => $totals['room_details'],
-            'room_total' => $totals['room_total'],
-            'service_total' => $totals['service_total'],
-            'discount_amount' => $totals['discount'],
-            'raw_total' => $totals['raw_total'],
-            'total_amount' => $totals['total_amount'],
-            'status' => $booking->status,
-            'check_out_at' => $booking->check_out_at,
-        ]);
     }
 
 
@@ -666,7 +702,7 @@ class BookingController extends Controller
             'total_amount' => $totalAmount,
         ];
     }
-    
+
     public function removeService(Request $request, $bookingId)
     {
         $validated = $request->validate([

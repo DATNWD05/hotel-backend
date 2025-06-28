@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
-use App\Models\Booking; // Thêm model Booking
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use App\Models\Booking;
+use App\Models\Invoice;
+use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 
 class VNPayController extends Controller
 {
-
     private function calculateBookingTotals($booking)
     {
         $checkIn = Carbon::parse($booking->check_in_date);
@@ -21,47 +23,39 @@ class VNPayController extends Controller
         }
 
         $nights = $checkIn->diffInDays($checkOut);
-
-        // Tính tiền phòng
         $roomTotal = 0;
-        $roomDetails = [];
-
         foreach ($booking->rooms as $room) {
             $rate = floatval(optional($room->roomType)->base_rate ?? 0);
-            $total = $rate * $nights;
-
-            $roomTotal += $total;
-
-            $roomDetails[] = [
-                'room_number' => $room->room_number,
-                'base_rate' => $rate,
-                'total' => $total
-            ];
+            $roomTotal += $rate * $nights;
         }
 
-        // Tính tiền dịch vụ
         $serviceTotal = 0;
         foreach ($booking->services as $service) {
             $quantity = intval($service->pivot->quantity ?? 1);
             $serviceTotal += floatval($service->price) * $quantity;
         }
 
-        // giảm giá
         $discountAmount = floatval($booking->discount_amount ?? 0);
         $discountType = $booking->discount_type ?? 'percent';
         $rawTotal = $roomTotal + $serviceTotal;
 
         if ($discountType === 'percent') {
-            $discount = ($discountAmount > 0) ? ($rawTotal * $discountAmount / 100) : 0;
+            $discount = $discountAmount > 0 ? ($rawTotal * $discountAmount / 100) : 0;
         } elseif ($discountType === 'amount') {
-            $discount = min($discountAmount, $rawTotal); // không cho trừ quá
+            $discount = min($discountAmount, $rawTotal);
         } else {
             $discount = 0;
         }
 
         $totalAmount = $rawTotal - $discount;
 
-        return $totalAmount;
+        return [
+            'room_total' => $roomTotal,
+            'service_total' => $serviceTotal,
+            'discount' => $discount,
+            'total_amount' => $totalAmount,
+            'raw_total' => $rawTotal
+        ];
     }
 
     public function create(Request $request)
@@ -79,7 +73,7 @@ class VNPayController extends Controller
         }
 
         try {
-            $totalAmount = $this->calculateBookingTotals($booking);
+            $totals = $this->calculateBookingTotals($booking);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }
@@ -90,7 +84,7 @@ class VNPayController extends Controller
             'vnp_Version'    => '2.1.0',
             'vnp_Command'    => 'pay',
             'vnp_TmnCode'    => $vnp_TmnCode,
-            'vnp_Amount'     => $totalAmount * 100, // VNPAY dùng đơn vị là đồng * 100
+            'vnp_Amount'     => $totals['total_amount'] * 100,
             'vnp_CreateDate' => date('YmdHis'),
             'vnp_CurrCode'   => 'VND',
             'vnp_IpAddr'     => request()->ip(),
@@ -108,13 +102,13 @@ class VNPayController extends Controller
 
         $paymentUrl = $vnp_Url . '?' . http_build_query($data);
 
-        $booking->total_amount = $totalAmount;
+        $booking->total_amount = $totals['total_amount'];
         $booking->save();
 
         return response()->json([
             'payment_url'   => $paymentUrl,
             'order_id'      => $orderId,
-            'total_amount'  => $totalAmount
+            'total_amount'  => $totals['total_amount']
         ]);
     }
 
@@ -131,64 +125,87 @@ class VNPayController extends Controller
         }
 
         if (!isset($returnData['vnp_SecureHash'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Thiếu vnp_SecureHash',
-                'data' => $inputData
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'Thiếu vnp_SecureHash'], 400);
         }
 
         $vnp_SecureHash = $returnData['vnp_SecureHash'];
         unset($returnData['vnp_SecureHash']);
-
         ksort($returnData);
         $query = http_build_query($returnData);
         $hash = hash_hmac('sha512', $query, $vnp_HashSecret);
 
-        if ($hash === $vnp_SecureHash) {
-            preg_match('/BOOKING-(\d+)-/', $returnData['vnp_TxnRef'], $matches);
-            $bookingId = $matches[1] ?? null;
+        if ($hash !== $vnp_SecureHash) {
+            return response()->json(['success' => false, 'message' => 'Sai mã bảo mật'], 400);
+        }
 
-            if ($bookingId) {
-                $booking = Booking::with('rooms')->find($bookingId);
+        preg_match('/BOOKING-(\d+)-/', $returnData['vnp_TxnRef'], $matches);
+        $bookingId = $matches[1] ?? null;
 
-                if (!$booking) {
-                    return response()->json(['error' => 'Booking not found'], 404);
-                }
+        if (!$bookingId) {
+            return response()->json(['error' => 'Transaction reference không hợp lệ'], 400);
+        }
 
-                if ($returnData['vnp_ResponseCode'] == '00') {
-                    $totalAmount = $this->calculateBookingTotals($booking);
+        $booking = Booking::with('rooms.roomType', 'services')->find($bookingId);
+        if (!$booking) {
+            return response()->json(['error' => 'Booking not found'], 404);
+        }
 
-                    $booking->update([
-                        'total_amount'  => $totalAmount,
-                        'status'        => 'Checked-out',
-                        'check_out_at'  => now(),
-                    ]);
+        if ($returnData['vnp_ResponseCode'] != '00') {
+            return response()->json(['success' => false, 'message' => 'Thanh toán thất bại'], 400);
+        }
 
-                    foreach ($booking->rooms as $room) {
-                        $room->update(['status' => 'available']);
-                    }
+        DB::beginTransaction();
+        try {
+            $totals = $this->calculateBookingTotals($booking);
 
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Thanh toán thành công',
-                        'data' => $returnData
-                    ]);
-                } else {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Thanh toán thất bại',
-                        'data' => $returnData
-                    ]);
-                }
-            } else {
-                return response()->json(['error' => 'Transaction reference không hợp lệ'], 400);
-            }
-        } else {
-            return response()->json([
-                'success' => false,
-                'message' => 'Sai mã bảo mật (secure hash)'
+            $booking->update([
+                'total_amount' => $totals['total_amount'],
+                'status' => 'Checked-out',
+                'check_out_at' => now(),
             ]);
+
+            foreach ($booking->rooms as $room) {
+                $room->update(['status' => 'available']);
+            }
+
+            // Tạo invoice
+            $today = now()->format('Ymd');
+            $countToday = Invoice::whereDate('issued_date', today())->count() + 1;
+            $invoiceCode = 'INV-' . $today . '-' . str_pad($countToday, 3, '0', STR_PAD_LEFT);
+
+            $invoice = Invoice::create([
+                'invoice_code' => $invoiceCode,
+                'booking_id' => $booking->id,
+                'issued_date' => now(),
+                'room_amount' => $totals['room_total'],
+                'service_amount' => $totals['service_total'],
+                'discount_amount' => $totals['discount'],
+                'deposit_amount' => $booking->deposit_amount ?? 0,
+                'total_amount' => $totals['total_amount'],
+            ]);
+
+            // Tạo payment
+            Payment::create([
+                'invoice_id' => $invoice->id,
+                'amount' => $totals['total_amount'],
+                'method' => 'vnpay',
+                'transaction_code' => $returnData['vnp_TransactionNo'] ?? null,
+                'paid_at' => now(),
+                'status' => 'success',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Thanh toán thành công',
+                'booking_id' => $booking->id,
+                'invoice_code' => $invoice->invoice_code,
+                'transaction_code' => $returnData['vnp_TransactionNo'] ?? null
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Lỗi xử lý thanh toán: ' . $e->getMessage()], 500);
         }
     }
 }
