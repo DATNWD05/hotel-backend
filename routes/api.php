@@ -132,6 +132,9 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     });
 });
 
+// thanh toán online
+Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
+Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
 
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
@@ -162,15 +165,6 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::post('/pay-cash/{id}', [BookingController::class, 'payByCash']);
     Route::post('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
 
-
-
-
     // Hóa đơn
     Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
 });
-
-
-
-
-Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
-Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
