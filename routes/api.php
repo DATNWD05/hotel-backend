@@ -179,5 +179,15 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::post('/bookings/{id}/remove-service', [BookingController::class, 'removeService']);
 
     // Hóa đơn
-    Route::get('/invoice/by-customer/{customer_id}', [InvoiceController::class, 'generateGroupInvoice']);
+    Route::prefix('invoices')->group(function () {
+
+        // Xem danh sách hóa đơn (tùy chọn)
+        Route::get('/', [InvoiceController::class, 'index'])->name('api.invoices.index');
+
+        // Xem chi tiết 1 hóa đơn
+        Route::get('/{id}', [InvoiceController::class, 'show'])->name('api.invoices.show');
+
+        // (Tùy chọn) Xuất PDF hóa đơn
+         Route::get('/{id}/print', [InvoiceController::class, 'printInvoice']);
+    });
 });
