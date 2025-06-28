@@ -184,6 +184,9 @@ class VNPayController extends Controller
                 'total_amount' => $totals['total_amount'],
             ]);
 
+            
+            Log::info('VNPay Return Data:', $returnData);
+
             // Tạo payment
             Payment::create([
                 'invoice_id' => $invoice->id,
