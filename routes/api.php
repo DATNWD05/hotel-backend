@@ -188,6 +188,6 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
         Route::get('/{id}', [InvoiceController::class, 'show']);
 
         // (Tùy chọn) Xuất PDF hóa đơn
-        Route::get('/{id}/print', [InvoiceController::class, 'printInvoice']);
+        Route::get('/booking/{booking_id}/print', [InvoiceController::class, 'printInvoice']);
     });
 });
