@@ -47,9 +47,11 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function printInvoice($id)
+    public function printInvoice($booking_id)
     {
-        $invoice = Invoice::with('booking.customer')->find($id);
+        $invoice = Invoice::with('booking.customer')
+            ->where('booking_id', $booking_id)
+            ->first();
 
         if (!$invoice || !$invoice->booking || !$invoice->booking->customer) {
             return response()->json(['message' => 'Không tìm thấy thông tin khách hàng.'], 404);
