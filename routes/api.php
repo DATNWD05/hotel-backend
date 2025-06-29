@@ -141,6 +141,9 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
 
     // 15. Dịch vụ đã sử dụng
     Route::get('/statistics/booking-service-table', [StatisticsController::class, 'bookingServiceTable']);
+
+    // 16. Trang thống kê tổng hợp
+    Route::get('/statistics/summary-dashboard', [StatisticsController::class, 'summaryDashboard']);
 });
 
 // thanh toán online
