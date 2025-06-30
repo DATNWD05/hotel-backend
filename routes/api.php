@@ -1,13 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\VNPayController;
 use Illuminate\Support\Facades\Route;
-
 use App\Http\Controllers\Api\AuthController;
+
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomController;
-
 use App\Http\Controllers\Api\UserController;
+
+use App\Http\Controllers\Api\VNPayController;
 use App\Http\Controllers\Api\AmenityController;
 use App\Http\Controllers\Api\BookingController;
 
@@ -22,11 +22,11 @@ use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\PromotionController;
 
 use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
 use App\Http\Controllers\Api\ServiceCategoryController;
-use App\Http\Controllers\Api\BookingPromotionController;
 
-use App\Http\Controllers\Api\StatisticsController;
+use App\Http\Controllers\Api\BookingPromotionController;
 
 Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -148,12 +148,21 @@ Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
 Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
 
 // Khách hàng
-Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
     Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
+
+    // Phân quyền
+    Route::apiResource('roles', RoleController::class);
+
+    // Gán & gỡ quyền cho vai trò
+    Route::prefix('roles')->group(function () {
+        Route::post('{id}/permissions', [RoleController::class, 'assignPermissions']);
+        Route::delete('{id}/permissions', [RoleController::class, 'removePermissions']);
+    });
 });
 
 Route::post('/register', [AuthController::class, 'register']);

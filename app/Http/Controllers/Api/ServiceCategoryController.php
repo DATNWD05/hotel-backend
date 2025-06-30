@@ -108,6 +108,7 @@ class ServiceCategoryController extends Controller
 
         return response()->json([
             'message' => 'Danh mục dịch vụ đã được xóa thành công.',
-        ], 204);
+        ], 200); // 200 thay vì 204
+
     }
 }

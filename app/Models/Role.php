@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Permission;
+
 
 class Role extends Model
 {
@@ -28,5 +30,11 @@ class Role extends Model
         return $this->hasMany(User::class);
     }
 
-    
+    // Quan hệ nhiều-nhiều với Permission
+    // app/Models/Role.php
+
+    public function permissions()
+    {
+        return $this->belongsToMany(Permission::class, 'role_permissions');
+    }
 }

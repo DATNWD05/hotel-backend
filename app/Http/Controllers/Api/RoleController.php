@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Role;
+use App\Models\Permission;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
@@ -10,7 +11,9 @@ use Exception;
 
 class RoleController extends Controller
 {
-    // Lấy danh sách tất cả các role
+    /**
+     * Lấy danh sách tất cả các vai trò
+     */
     public function index()
     {
         try {
@@ -20,30 +23,28 @@ class RoleController extends Controller
                 'message' => 'Danh sách vai trò',
                 'roles' => $roles,
                 'status' => 200
-            ], 200);
+            ]);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi lấy danh sách vai trò',
+                'message' => 'Lỗi khi lấy danh sách vai trò',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);
+            ]);
         }
     }
 
-
+    /**
+     * Tạo vai trò mới và gán quyền nếu có
+     */
     public function store(Request $request)
     {
         try {
-            // Validate với thông báo lỗi chi tiết
+            // Validate đầu vào
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:255',
-            ], [
-                'name.required' => 'Tên vai trò là bắt buộc.',
-                'name.string' => 'Tên vai trò phải là chuỗi.',
-                'name.max' => 'Tên vai trò không được vượt quá 255 ký tự.',
-                'description.string' => 'Mô tả phải là chuỗi.',
-                'description.max' => 'Mô tả không được vượt quá 255 ký tự.',
+                'permissions' => 'nullable|array',
+                'permissions.*' => 'integer|exists:permissions,id',
             ]);
 
             if ($validator->fails()) {
@@ -51,79 +52,88 @@ class RoleController extends Controller
                     'message' => 'Dữ liệu không hợp lệ',
                     'errors' => $validator->errors(),
                     'status' => 422
-                ], 422);
+                ]);
             }
 
-            // Nếu hợp lệ thì tạo vai trò
+            // Tạo vai trò mới
             $role = Role::create([
-                'name' => $request->name,
+                'name' => trim($request->name),
                 'description' => $request->description,
             ]);
 
+            // Nếu là owner thì gán toàn bộ quyền
+            if (strtolower(trim($role->name)) === 'owner') {
+                $allPermissions = Permission::pluck('id')->unique()->toArray();
+                $role->permissions()->sync($allPermissions);
+            }
+            // Nếu là vai trò thường, gán theo request (nếu có)
+            elseif ($request->has('permissions')) {
+                $role->permissions()->sync(array_unique($request->permissions));
+            }
+
             return response()->json([
                 'message' => 'Tạo vai trò thành công',
-                'role' => $role,
+                'role' => $role->load('permissions'),
                 'status' => 201
-            ], 201);
+            ]);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi tạo vai trò',
+                'message' => 'Lỗi khi tạo vai trò',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);
+            ]);
         }
     }
 
-    // Lấy chi tiết một role
+    /**
+     * Lấy chi tiết 1 vai trò kèm quyền
+     */
     public function show($id)
     {
         try {
-            $role = Role::find($id);
+            // Gọi thêm quan hệ permissions
+            $role = Role::with('permissions')->find($id);
 
             if (!$role) {
                 return response()->json([
-                    'message' => 'Không tìm thấy vai trò với ID: ' . $id,
+                    'message' => 'Không tìm thấy vai trò',
                     'status' => 404
-                ], 404);
+                ]);
             }
 
             return response()->json([
                 'message' => 'Chi tiết vai trò',
                 'role' => $role,
                 'status' => 200
-            ], 200);
+            ]);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi lấy chi tiết vai trò',
+                'message' => 'Lỗi khi lấy chi tiết vai trò',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);
+            ]);
         }
     }
 
+    /**
+     * Cập nhật thông tin và quyền của vai trò
+     */
     public function update(Request $request, $id)
     {
         try {
-            // Tìm vai trò theo ID
             $role = Role::find($id);
 
             if (!$role) {
                 return response()->json([
-                    'message' => 'Không tìm thấy vai trò với ID: ' . $id,
+                    'message' => 'Không tìm thấy vai trò',
                     'status' => 404
-                ], 404);
+                ]);
             }
 
-            // Validate với thông báo lỗi tùy chỉnh
+            // Validate dữ liệu
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:255',
-            ], [
-                'name.required' => 'Tên vai trò là bắt buộc.',
-                'name.string' => 'Tên vai trò phải là chuỗi.',
-                'name.max' => 'Tên vai trò không được vượt quá 255 ký tự.',
-                'description.string' => 'Mô tả phải là chuỗi.',
-                'description.max' => 'Mô tả không được vượt quá 255 ký tự.',
             ]);
 
             if ($validator->fails()) {
@@ -131,44 +141,178 @@ class RoleController extends Controller
                     'message' => 'Dữ liệu không hợp lệ',
                     'errors' => $validator->errors(),
                     'status' => 422
-                ], 422);
+                ]);
             }
 
             // Cập nhật vai trò
             $role->update([
-                'name' => $request->name,
+                'name' => trim($request->name),
                 'description' => $request->description,
             ]);
 
+            // Nếu là owner thì gán toàn bộ quyền
+            if (strtolower(trim($role->name)) === 'owner') {
+                $allPermissions = Permission::pluck('id')->unique()->toArray();
+                $role->permissions()->sync($allPermissions);
+            }
+            // Gán lại quyền theo request nếu có
+            elseif ($request->has('permissions')) {
+                $role->permissions()->sync(array_unique($request->permissions));
+            }
+
             return response()->json([
                 'message' => 'Cập nhật vai trò thành công',
-                'role' => $role,
+                'role' => $role->load('permissions'),
                 'status' => 200
             ]);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi cập nhật vai trò',
+                'message' => 'Lỗi khi cập nhật vai trò',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);
+            ]);
         }
     }
 
-    public function destroy(Role $role)
+    /**
+     * Xóa vai trò
+     */
+    public function destroy($id)
     {
         try {
+            $role = Role::find($id);
+
+            if (!$role) {
+                return response()->json([
+                    'message' => 'Không tìm thấy vai trò',
+                    'status' => 404
+                ]);
+            }
+
             $role->delete();
 
             return response()->json([
                 'message' => 'Xóa vai trò thành công',
                 'status' => 200
-            ], 200);
+            ]);
         } catch (Exception $e) {
             return response()->json([
-                'message' => 'Đã xảy ra lỗi khi xóa vai trò',
+                'message' => 'Lỗi khi xóa vai trò',
                 'error' => $e->getMessage(),
                 'status' => 500
-            ], 500);
+            ]);
         }
+    }
+
+    /**
+     * Gán thêm quyền cho vai trò mà không ghi đè quyền cũ
+     */
+    public function assignPermissions(Request $request, $id)
+    {
+        try {
+            $role = Role::find($id);
+
+            if (!$role) {
+                return response()->json([
+                    'message' => 'Không tìm thấy vai trò',
+                    'status' => 404
+                ]);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'permissions' => 'required|array',
+                'permissions.*' => 'integer|exists:permissions,id'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Dữ liệu không hợp lệ',
+                    'errors' => $validator->errors(),
+                    'status' => 422
+                ]);
+            }
+
+            // Gán thêm mà không xóa quyền cũ
+            $role->permissions()->syncWithoutDetaching(array_unique($request->permissions));
+
+            return response()->json([
+                'message' => 'Đã gán thêm quyền thành công',
+                'role' => $role->load('permissions'),
+                'status' => 200
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Lỗi khi gán quyền',
+                'error' => $e->getMessage(),
+                'status' => 500
+            ]);
+        }
+    }
+
+    /**
+     * Gỡ bớt quyền khỏi vai trò
+     */
+    public function removePermissions(Request $request, $id)
+    {
+        try {
+            $role = Role::find($id);
+
+            if (!$role) {
+                return response()->json([
+                    'message' => 'Không tìm thấy vai trò',
+                    'status' => 404
+                ]);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'permissions' => 'required|array',
+                'permissions.*' => 'integer|exists:permissions,id'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Dữ liệu không hợp lệ',
+                    'errors' => $validator->errors(),
+                    'status' => 422
+                ]);
+            }
+
+            $role->permissions()->detach(array_unique($request->permissions));
+
+            return response()->json([
+                'message' => 'Đã gỡ quyền thành công',
+                'role' => $role->load('permissions'),
+                'status' => 200
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Lỗi khi gỡ quyền',
+                'error' => $e->getMessage(),
+                'status' => 500
+            ]);
+        }
+    }
+    public function syncPermissions(Request $request, $id)
+    {
+        $role = Role::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'permissions' => 'required|array',
+            'permissions.*' => 'integer|exists:permissions,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Dữ liệu không hợp lệ',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $role->syncPermissions($request->permissions);
+
+        return response()->json([
+            'message' => 'Đã cập nhật quyền cho vai trò',
+            'role' => $role->load('permissions')
+        ]);
     }
 }
