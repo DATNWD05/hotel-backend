@@ -149,6 +149,10 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
 // thanh toán online
 Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
 Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
+// thanh toán online cọc
+Route::post('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline']);
+Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositReturn'])->name('vnpay.deposit.return');
+
 
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
@@ -165,12 +169,15 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 Route::post('/forgot-password', [AuthController::class, 'forgot']);
 Route::post('/reset-password', [AuthController::class, 'reset']);
 
+// Xử lý Bookings
 Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
     Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
+    Route::post('/bookings/{id}/deposit', [BookingController::class, 'payDeposit']);
+
 
     // xử lí trạng thái bookings
     Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);

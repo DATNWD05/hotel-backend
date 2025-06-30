@@ -184,7 +184,7 @@ class VNPayController extends Controller
                 'total_amount' => $totals['total_amount'],
             ]);
 
-            
+
             Log::info('VNPay Return Data:', $returnData);
 
             // Tạo payment
@@ -211,4 +211,152 @@ class VNPayController extends Controller
             return response()->json(['success' => false, 'message' => 'Lỗi xử lý thanh toán: ' . $e->getMessage()], 500);
         }
     }
+
+    public function payDepositOnline(Request $request)
+    {
+        $bookingId = $request->input('booking_id');
+        $booking = Booking::find($bookingId);
+
+        if (!$booking) {
+            return response()->json(['error' => 'Không tìm thấy booking'], 404);
+        }
+
+        if ($booking->is_deposit_paid) {
+            return response()->json(['error' => 'Đơn đặt phòng đã được thanh toán đặt cọc'], 422);
+        }
+
+        // Tính tiền đặt cọc: 30% tổng
+        $depositAmount = $booking->deposit_amount;
+
+
+        // Cấu hình VNPay
+        $vnp_TmnCode    = Config::get('vnpay.tmn_code');
+        $vnp_HashSecret = Config::get('vnpay.hash_secret');
+        $vnp_Url        = Config::get('vnpay.url');
+        $vnp_ReturnUrl  = route('vnpay.deposit.return'); // Đảm bảo bạn có route tên này
+
+        $orderId = 'BOOKING-DEPOSIT-' . $bookingId . '-' . time();
+
+        $data = [
+            'vnp_Version'    => '2.1.0',
+            'vnp_Command'    => 'pay',
+            'vnp_TmnCode'    => $vnp_TmnCode,
+            'vnp_Amount'     => $depositAmount * 100,
+            'vnp_CreateDate' => date('YmdHis'),
+            'vnp_CurrCode'   => 'VND',
+            'vnp_IpAddr'     => request()->ip(),
+            'vnp_Locale'     => 'vn',
+            'vnp_OrderInfo'  => 'Thanh toán đặt cọc cho booking #' . $bookingId,
+            'vnp_OrderType'  => 'other',
+            'vnp_ReturnUrl'  => $vnp_ReturnUrl,
+            'vnp_TxnRef'     => $orderId,
+        ];
+
+        ksort($data);
+        $hashData = '';
+        foreach ($data as $key => $value) {
+            $hashData .= urlencode($key) . '=' . urlencode($value) . '&';
+        }
+        $hashData = rtrim($hashData, '&');
+        $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
+        $data['vnp_SecureHash'] = $secureHash;
+
+        $paymentUrl = $vnp_Url . '?' . http_build_query($data);
+
+
+        // Trả về URL thanh toán
+        return response()->json([
+            'payment_url'    => $vnp_Url . '?' . http_build_query($data),
+            'order_id'       => $orderId,
+            'deposit_amount' => $booking->deposit_amount,
+        ]);
+    }
+
+
+
+    public function handleDepositReturn(Request $request)
+{
+    $vnp_HashSecret = Config::get('vnpay.hash_secret');
+    $inputData = $request->all();
+    $vnp_SecureHash = $inputData['vnp_SecureHash'] ?? null;
+
+    if (!$vnp_SecureHash) {
+        return response()->json(['success' => false, 'message' => 'Thiếu mã bảo mật'], 400);
+    }
+
+    // Lấy các vnp_ tham số để xác minh chữ ký
+    $vnpData = [];
+    foreach ($inputData as $key => $value) {
+        if (str_starts_with($key, 'vnp_') && $key !== 'vnp_SecureHash') {
+            $vnpData[$key] = $value;
+        }
+    }
+
+    ksort($vnpData);
+    $hashData = '';
+    foreach ($vnpData as $key => $value) {
+        $hashData .= urlencode($key) . '=' . urlencode($value) . '&';
+    }
+    $hashData = rtrim($hashData, '&');
+
+    $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
+    if ($secureHash !== $vnp_SecureHash) {
+        return response()->json(['success' => false, 'message' => 'Sai mã bảo mật'], 400);
+    }
+
+    if ($inputData['vnp_ResponseCode'] !== '00') {
+        return response()->json(['success' => false, 'message' => 'Thanh toán thất bại'], 400);
+    }
+
+    // Trích booking_id từ TxnRef
+    if (!preg_match('/BOOKING-DEPOSIT-(\d+)-/', $inputData['vnp_TxnRef'], $matches)) {
+        return response()->json(['error' => 'Mã giao dịch không hợp lệ'], 400);
+    }
+
+    $bookingId = $matches[1];
+    $booking = Booking::find($bookingId);
+    if (!$booking) {
+        return response()->json(['error' => 'Không tìm thấy booking'], 404);
+    }
+
+    // Đã thanh toán rồi thì không xử lý lại
+    if ($booking->is_deposit_paid) {
+        return response()->json(['message' => 'Đặt cọc đã được thanh toán trước đó'], 422);
+    }
+
+    $depositAmount = $inputData['vnp_Amount'] / 100;
+
+    DB::beginTransaction();
+    try {
+        // Ghi log thanh toán (KHÔNG có invoice_id)
+        Payment::create([
+            'invoice_id'       => null, // vì chưa có hóa đơn
+            'amount'           => $depositAmount,
+            'method'           => 'vnpay',
+            'transaction_code' => $inputData['vnp_TransactionNo'] ?? null,
+            'paid_at'          => now(),
+            'status'           => 'success',
+        ]);
+
+        // Cập nhật đơn đặt phòng
+        $booking->update([
+            'deposit_amount'   => $depositAmount,
+            'is_deposit_paid'  => true,
+            'status'           => 'Confirmed',
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'success'          => true,
+            'message'          => 'Thanh toán đặt cọc thành công',
+            'booking_id'       => $booking->id,
+            'transaction_code' => $inputData['vnp_TransactionNo'] ?? null,
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['success' => false, 'message' => 'Lỗi xử lý: ' . $e->getMessage()], 500);
+    }
+}
+
 }
