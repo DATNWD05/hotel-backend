@@ -426,6 +426,10 @@ class StatisticsController extends Controller
                     'mess' => 'Thống kê tổng số booking theo tháng thành công',
                     'data' => $this->bookingsByMonth()->getData()->data,
                 ],
+                'total_per_booking' => [
+                    'mess' => 'Tổng chi phí từng booking',
+                    'data' => $this->totalPerBooking()->getData()->data,
+                ],
             ]
         ]);
     }
