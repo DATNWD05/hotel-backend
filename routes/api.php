@@ -95,47 +95,6 @@ Route::middleware(['auth:sanctum', "role:1"])->group(function () {
     );
 
     // Thống kê
-    Route::prefix('statistics')->group(function () {
-        // 1. Tổng doanh thu toàn hệ thống
-        Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
-
-        // 2. Doanh thu từng ngày
-        Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
-
-        // 3. Tổng chi phí từng booking
-        Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
-
-        // 4. Doanh thu theo khách hàng
-        Route::get('/revenue-by-customer', [StatisticsController::class, 'revenueByCustomer']);
-
-        // 5. Doanh thu theo phòng
-        Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
-
-        // 6. Tỷ lệ lấp đầy phòng
-        Route::get('/occupancy-rate', [StatisticsController::class, 'occupancyRate']);
-
-        // 7. Trung bình thời gian lưu trú
-        Route::get('/average-stay-duration', [StatisticsController::class, 'averageStayDuration']);
-
-        // 8. Tỷ lệ huỷ phòng
-        Route::get('/cancellation-rate', [StatisticsController::class, 'cancellationRate']);
-
-        // 9. Top khách đặt nhiều nhất
-        Route::get('/top-customers', [StatisticsController::class, 'topFrequentCustomers']);
-
-        // 10. Tổng số booking theo tháng
-        Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
-
-        // 11. Doanh thu theo loại phòng
-        Route::get('/revenue-by-room-type', [StatisticsController::class, 'revenueByRoomType']);
-
-        // 12. Tổng doanh thu từ dịch vụ
-        Route::get('/total-service-revenue', [StatisticsController::class, 'totalServiceRevenue']);
-
-        // 13. Số lượng phòng được đặt theo loại
-        Route::get('/room-type-booking-count', [StatisticsController::class, 'roomTypeBookingCount']);
-    });
-
     // 14. Bảng doanh thu
     Route::get('/statistics/revenue-table', [StatisticsController::class, 'revenueTable']);
 
