@@ -31,10 +31,12 @@ class Role extends Model
     }
 
     // Quan hệ nhiều-nhiều với Permission
-    // app/Models/Role.php
-
     public function permissions()
     {
         return $this->belongsToMany(Permission::class, 'role_permissions');
+    }
+    public function syncPermissions($permissions)
+    {
+        $this->permissions()->sync(array_unique($permissions));
     }
 }

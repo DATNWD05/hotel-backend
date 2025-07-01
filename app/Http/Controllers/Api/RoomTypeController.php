@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use Exception;
 use App\Models\RoomType;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
-use Exception;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class RoomTypeController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(RoomType::class, 'room-types');
+    }
     // Lấy tất cả loại phòng
     public function index()
     {

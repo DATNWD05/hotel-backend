@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
 use App\Models\Booking;
 use App\Models\Invoice;
 use App\Models\Payment;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Config;
 
 class VNPayController extends Controller
 {
@@ -184,7 +185,7 @@ class VNPayController extends Controller
                 'total_amount' => $totals['total_amount'],
             ]);
 
-            
+
             Log::info('VNPay Return Data:', $returnData);
 
             // Tạo payment

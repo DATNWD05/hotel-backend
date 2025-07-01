@@ -28,7 +28,7 @@ use App\Http\Controllers\Api\ServiceCategoryController;
 
 use App\Http\Controllers\Api\BookingPromotionController;
 
-Route::middleware(['auth:sanctum', "role:1"])->group(function () {
+Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
@@ -154,15 +154,6 @@ Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
     Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
-
-    // Phân quyền
-    Route::apiResource('roles', RoleController::class);
-
-    // Gán & gỡ quyền cho vai trò
-    Route::prefix('roles')->group(function () {
-        Route::post('{id}/permissions', [RoleController::class, 'assignPermissions']);
-        Route::delete('{id}/permissions', [RoleController::class, 'removePermissions']);
-    });
 });
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -199,4 +190,14 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
         // (Tùy chọn) Xuất PDF hóa đơn
         Route::get('/{id}/print', [InvoiceController::class, 'printInvoice']);
     });
+});
+
+// Phân quyền
+Route::middleware('auth:sanctum')->group(function () {
+    // Resource routes: index, store, show, update, destroy
+    Route::apiResource('roles', RoleController::class);
+
+    // Gán / gỡ quyền
+    Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions']);
+    Route::delete('roles/{role}/permissions', [RoleController::class, 'removePermissions']);
 });

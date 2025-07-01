@@ -2,21 +2,28 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use Carbon\Carbon;
+use App\Models\Room;
 use App\Models\Booking;
-use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\Promotion;
-use App\Models\Room;
 use App\Models\Service;
-use Carbon\Carbon;
+use App\Models\Customer;
+use App\Models\Promotion;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class BookingController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(Booking::class, 'bookings');
+    }
     /**
      * Hiển thị danh sách tất cả các đơn đặt phòng.
      */

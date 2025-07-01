@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\AmenityCategory\StoreAmenityCategoryRequest;
-use App\Http\Requests\AmenityCategory\UpdateAmenityCategoryRequest;
-use App\Http\Resources\AmenityCategoryResource;
 use App\Models\AmenityCategory;
 use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Controller;
+use App\Http\Resources\AmenityCategoryResource;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use App\Http\Requests\AmenityCategory\StoreAmenityCategoryRequest;
+use App\Http\Requests\AmenityCategory\UpdateAmenityCategoryRequest;
 
 class AmenityCategoryController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(AmenityCategory::class, 'amenity-categories');
+    }
     // GET /api/amenity-categories
     public function index(): JsonResponse
     {

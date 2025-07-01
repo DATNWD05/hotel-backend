@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Employees\StoreEmployeeRequest;
-use App\Http\Requests\Employees\UpdateEmployeeRequest;
 use App\Models\Employee;
 use App\Models\Department;
 use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Employees\StoreEmployeeRequest;
+use App\Http\Requests\Employees\UpdateEmployeeRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class EmployeeController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(Employee::class, parameter: 'employees');
+    }
     public function index()
     {
         $data = Employee::with(['department', 'role', 'user'])->paginate(10);
