@@ -3,18 +3,26 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 use App\Models\Booking;
 use App\Models\Promotion;
-use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use App\Models\BookingPromotion;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class BookingPromotionController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(BookingPromotion::class, 'booking-promotion');
+    }
     /**
      * Áp dụng mã khuyến mãi cho một Booking
      */

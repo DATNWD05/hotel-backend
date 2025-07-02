@@ -4,12 +4,19 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Carbon;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class CustomerController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(Customer::class, 'customer');
+    }
     public function index()
     {
         $data = Customer::paginate(10);

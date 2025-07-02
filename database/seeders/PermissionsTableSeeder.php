@@ -1,0 +1,101 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use App\Models\Permission;
+
+class PermissionsTableSeeder extends Seeder
+{
+    public function run()
+    {
+        $permissions = [
+            'view_users',
+            'create_users',
+            'edit_users',
+            'delete_users',
+            'view_roles',
+            'create_roles',
+            'edit_roles',
+            'delete_roles',
+            'assign_permissions',
+            'remove_permissions',
+            'view_employees',
+            'create_employees',
+            'edit_employees',
+            'delete_employees',
+            'view_departments',
+            'create_departments',
+            'edit_departments',
+            'delete_departments',
+            'view_room_types',
+            'create_room_types',
+            'edit_room_types',
+            'delete_room_types',
+            'sync_amenities_room_types',
+            'view_rooms',
+            'create_rooms',
+            'edit_rooms',
+            'delete_rooms',
+            'restore_rooms',
+            'force_delete_rooms',
+            'view_bookings',
+            'create_bookings',
+            'edit_bookings',
+            'cancel_bookings',
+            'add_services_bookings',
+            'remove_services_bookings',
+            'checkin_bookings',
+            'checkout_bookings',
+            'pay_cash_bookings',
+            'view_promotions',
+            'create_promotions',
+            'edit_promotions',
+            'delete_promotions',
+            'apply_promotions',
+            'view_services',
+            'create_services',
+            'edit_services',
+            'delete_services',
+            'view_service_categories',
+            'create_service_categories',
+            'edit_service_categories',
+            'delete_service_categories',
+            'view_amenities',
+            'create_amenities',
+            'edit_amenities',
+            'delete_amenities',
+            'view_amenity_categories',
+            'create_amenity_categories',
+            'edit_amenity_categories',
+            'delete_amenity_categories',
+            'restore_amenity_categories',
+            'force_delete_amenity_categories',
+            'view_invoices',
+            'print_invoices',
+            'view_total_revenue_statistics',
+            'view_by_day_statistics',
+            'view_total_per_booking_statistics',
+            'view_by_customer_statistics',
+            'view_by_room_statistics',
+            'view_occupancy_rate_statistics',
+            'view_avg_stay_statistics',
+            'view_cancellation_rate_statistics',
+            'view_top_customers_statistics',
+            'view_bookings_by_month_statistics',
+            'view_by_room_type_statistics',
+            'view_total_service_revenue_statistics',
+            'view_room_type_booking_count_statistics',
+            'view_revenue_table_statistics',
+            'view_booking_service_table_statistics',
+            'view_customers',
+            'create_customers',
+            'edit_customers',
+            'check_cccd_customers',
+        ];
+
+        foreach ($permissions as $name) {
+            Permission::firstOrCreate(['name' => $name]);
+        }
+    }
+}

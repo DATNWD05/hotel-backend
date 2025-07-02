@@ -2,37 +2,44 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Amentity\StoreAmenityRequest;
-use App\Http\Requests\Amentity\UpdateAmenityRequest;
-use App\Http\Resources\AmenityResource;
+use Throwable;
 use App\Models\Amenity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Throwable;
+use App\Http\Controllers\Controller;
+use App\Http\Resources\AmenityResource;
+use App\Http\Requests\Amentity\StoreAmenityRequest;
+use App\Http\Requests\Amentity\UpdateAmenityRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class AmenityController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(Amenity::class, 'amenity');
+    }
     /**
      * GET /api/amenities
      */
-   public function index(): JsonResponse
-{
-    $paginated = Amenity::with('category')
-        ->orderBy('created_at', 'desc')
-        ->paginate(10);
+    public function index(): JsonResponse
+    {
+        $paginated = Amenity::with('category')
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
 
-    return response()->json([
-        'status' => 'success',
-        'data'   => AmenityResource::collection($paginated->items()),
-        'meta'   => [
-            'current_page' => $paginated->currentPage(),
-            'per_page'     => $paginated->perPage(),
-            'last_page'    => $paginated->lastPage(),
-            'total'        => $paginated->total(),
-        ],
-    ], 200);
-}
+        return response()->json([
+            'status' => 'success',
+            'data'   => AmenityResource::collection($paginated->items()),
+            'meta'   => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'last_page'    => $paginated->lastPage(),
+                'total'        => $paginated->total(),
+            ],
+        ], 200);
+    }
 
 
     /**

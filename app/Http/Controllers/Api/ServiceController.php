@@ -6,9 +6,16 @@ use App\Models\Service;
 use Illuminate\Http\Request;
 use App\Models\ServiceCategory;
 use App\Http\Controllers\Controller;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class ServiceController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(Service::class, 'service');
+    }
     // Lấy tất cả dịch vụ
     public function index()
     {

@@ -1,13 +1,13 @@
 <?php
 
-use App\Http\Controllers\Api\VNPayController;
 use Illuminate\Support\Facades\Route;
-
 use App\Http\Controllers\Api\AuthController;
+
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RoomController;
-
 use App\Http\Controllers\Api\UserController;
+
+use App\Http\Controllers\Api\VNPayController;
 use App\Http\Controllers\Api\AmenityController;
 use App\Http\Controllers\Api\BookingController;
 
@@ -22,13 +22,13 @@ use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\PromotionController;
 
 use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
 use App\Http\Controllers\Api\ServiceCategoryController;
+
 use App\Http\Controllers\Api\BookingPromotionController;
 
-use App\Http\Controllers\Api\StatisticsController;
-
-Route::middleware(['auth:sanctum', "role:1"])->group(function () {
+Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
@@ -114,7 +114,7 @@ Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositRetur
 
 
 // Khách hàng
-Route::middleware(['auth:sanctum', 'role:1,2'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
@@ -159,4 +159,14 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
         // (Tùy chọn) Xuất PDF hóa đơn
         Route::get('/booking/{booking_id}/print', [InvoiceController::class, 'printInvoice']);
     });
+});
+
+// Phân quyền
+Route::middleware('auth:sanctum')->group(function () {
+    // Resource routes: index, store, show, update, destroy
+    Route::apiResource('roles', RoleController::class);
+
+    // Gán / gỡ quyền
+    Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions']);
+    Route::delete('roles/{role}/permissions', [RoleController::class, 'removePermissions']);
 });
