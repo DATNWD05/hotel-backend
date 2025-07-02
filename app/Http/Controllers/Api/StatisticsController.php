@@ -316,7 +316,7 @@ class StatisticsController extends Controller
     // 15. Dịch vụ đã sử dụng
     public function bookingServiceTable(Request $request)
     {
-        $perPage = $request->input('per_page', 10); // mặc định 10 bản ghi mỗi trang
+        $perPage = $request->input('per_page', 10);
         $currentPage = $request->input('page', 1);
 
         $query = DB::table('booking_service')
@@ -331,7 +331,7 @@ class StatisticsController extends Controller
                 'bookings.id as booking_code',
                 'services.name as service_name',
                 'service_categories.name as category_name',
-                'services.price', // sửa ở đây
+                'services.price',
                 'booking_service.quantity',
                 DB::raw('(booking_service.quantity * services.price) as total'),
                 'employees.name as employee_name',
@@ -364,6 +364,72 @@ class StatisticsController extends Controller
             ],
             'summary' => [
                 'total_amount' => $summary->total_amount ?? 0,
+            ]
+        ]);
+    }
+
+    // 16. Trang thống kê tổng hợp
+    public function summaryDashboard()
+    {
+        return response()->json([
+            'mess' => 'Tổng hợp dữ liệu thống kê cho dashboard thành công',
+            'data' => [
+                'total_revenue' => [
+                    'mess' => 'Tổng doanh thu toàn hệ thống',
+                    'data' => $this->totalRevenue()->getData()->data,
+                ],
+                'revenue_by_day' => [
+                    'mess' => 'Lấy doanh thu theo ngày thành công',
+                    'data' => $this->revenueByDay()->getData()->data,
+                ],
+                'revenue_by_room' => [
+                    'mess' => 'Lấy doanh thu theo phòng thành công',
+                    'data' => $this->revenueByRoom()->getData()->data,
+                ],
+                'revenue_by_customer' => [
+                    'mess' => 'Lấy doanh thu theo khách hàng thành công',
+                    'data' => $this->revenueByCustomer()->getData()->data,
+                ],
+                'revenue_by_room_type' => [
+                    'mess' => 'Doanh thu theo loại phòng',
+                    'data' => $this->revenueByRoomType()->getData()->data,
+                ],
+                'room_type_booking_count' => [
+                    'mess' => 'Số lượng phòng được đặt theo loại',
+                    'data' => $this->roomTypeBookingCount()->getData()->data,
+                ],
+                'total_service_revenue' => [
+                    'mess' => 'Tổng doanh thu dịch vụ',
+                    'total_service_revenue' => $this->totalServiceRevenue()->getData()->total_service_revenue,
+                ],
+                'occupancy_rate' => [
+                    'mess' => 'Tỷ lệ lấp đầy phòng hiện tại',
+                    'occupancy_rate' => $this->occupancyRate()->getData()->occupancy_rate,
+                    'total_rooms' => $this->occupancyRate()->getData()->total_rooms,
+                    'occupied_rooms' => $this->occupancyRate()->getData()->occupied_rooms,
+                ],
+                'average_stay_duration' => [
+                    'mess' => 'Tính trung bình thời gian lưu trú thành công',
+                    'average_stay_days' => $this->averageStayDuration()->getData()->average_stay_days,
+                ],
+                'cancellation_rate' => [
+                    'mess' => 'Tính tỷ lệ huỷ phòng thành công',
+                    'cancellation_rate' => $this->cancellationRate()->getData()->cancellation_rate,
+                    'total_bookings' => $this->cancellationRate()->getData()->total_bookings,
+                    'cancelled_bookings' => $this->cancellationRate()->getData()->cancelled_bookings,
+                ],
+                'top_customers' => [
+                    'mess' => 'Lấy top khách hàng đặt nhiều nhất thành công',
+                    'data' => $this->topFrequentCustomers()->getData()->data,
+                ],
+                'bookings_by_month' => [
+                    'mess' => 'Thống kê tổng số booking theo tháng thành công',
+                    'data' => $this->bookingsByMonth()->getData()->data,
+                ],
+                'total_per_booking' => [
+                    'mess' => 'Tổng chi phí từng booking',
+                    'data' => $this->totalPerBooking()->getData()->data,
+                ],
             ]
         ]);
     }

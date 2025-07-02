@@ -95,57 +95,23 @@ Route::middleware('auth:sanctum')->group(function () {
     );
 
     // Thống kê
-    Route::prefix('statistics')->group(function () {
-        // 1. Tổng doanh thu toàn hệ thống
-        Route::get('/total-revenue', [StatisticsController::class, 'totalRevenue']);
-
-        // 2. Doanh thu từng ngày
-        Route::get('/revenue-by-day', [StatisticsController::class, 'revenueByDay']);
-
-        // 3. Tổng chi phí từng booking
-        Route::get('/total-per-booking', [StatisticsController::class, 'totalPerBooking']);
-
-        // 4. Doanh thu theo khách hàng
-        Route::get('/revenue-by-customer', [StatisticsController::class, 'revenueByCustomer']);
-
-        // 5. Doanh thu theo phòng
-        Route::get('/revenue-by-room', [StatisticsController::class, 'revenueByRoom']);
-
-        // 6. Tỷ lệ lấp đầy phòng
-        Route::get('/occupancy-rate', [StatisticsController::class, 'occupancyRate']);
-
-        // 7. Trung bình thời gian lưu trú
-        Route::get('/average-stay-duration', [StatisticsController::class, 'averageStayDuration']);
-
-        // 8. Tỷ lệ huỷ phòng
-        Route::get('/cancellation-rate', [StatisticsController::class, 'cancellationRate']);
-
-        // 9. Top khách đặt nhiều nhất
-        Route::get('/top-customers', [StatisticsController::class, 'topFrequentCustomers']);
-
-        // 10. Tổng số booking theo tháng
-        Route::get('/bookings-by-month', [StatisticsController::class, 'bookingsByMonth']);
-
-        // 11. Doanh thu theo loại phòng
-        Route::get('/revenue-by-room-type', [StatisticsController::class, 'revenueByRoomType']);
-
-        // 12. Tổng doanh thu từ dịch vụ
-        Route::get('/total-service-revenue', [StatisticsController::class, 'totalServiceRevenue']);
-
-        // 13. Số lượng phòng được đặt theo loại
-        Route::get('/room-type-booking-count', [StatisticsController::class, 'roomTypeBookingCount']);
-    });
-
     // 14. Bảng doanh thu
     Route::get('/statistics/revenue-table', [StatisticsController::class, 'revenueTable']);
 
     // 15. Dịch vụ đã sử dụng
     Route::get('/statistics/booking-service-table', [StatisticsController::class, 'bookingServiceTable']);
+
+    // 16. Trang thống kê tổng hợp
+    Route::get('/statistics/summary-dashboard', [StatisticsController::class, 'summaryDashboard']);
 });
 
 // thanh toán online
 Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
 Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
+// thanh toán online cọc
+Route::post('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline']);
+Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositReturn'])->name('vnpay.deposit.return');
+
 
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
@@ -162,12 +128,15 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 Route::post('/forgot-password', [AuthController::class, 'forgot']);
 Route::post('/reset-password', [AuthController::class, 'reset']);
 
+// Xử lý Bookings
 Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::put('/bookings/{id}', [BookingController::class, 'update']);
     Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
+    Route::post('/bookings/{id}/deposit', [BookingController::class, 'payDeposit']);
+
 
     // xử lí trạng thái bookings
     Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
@@ -188,7 +157,7 @@ Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
         Route::get('/{id}', [InvoiceController::class, 'show']);
 
         // (Tùy chọn) Xuất PDF hóa đơn
-        Route::get('/{id}/print', [InvoiceController::class, 'printInvoice']);
+        Route::get('/booking/{booking_id}/print', [InvoiceController::class, 'printInvoice']);
     });
 });
 

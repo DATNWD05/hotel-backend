@@ -23,6 +23,7 @@ class Booking extends Model
         'discount_amount',
         'total_amount',
         'deposit_amount',
+        'is_deposit_paid',
     ];
 
 
