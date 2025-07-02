@@ -2,29 +2,36 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Departments\StoreDepartmentRequest;
-use App\Http\Requests\Departments\UpdateDepartmentRequest;
 use App\Models\Department;
 use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Departments\StoreDepartmentRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use App\Http\Requests\Departments\UpdateDepartmentRequest;
 
 class DepartmentController extends Controller
 {
-    public function index()
-{
-    $data = Department::with('manager')->paginate(10);
+    use AuthorizesRequests;
 
-    return response()->json([
-        'status' => 'success',
-        'data'   => $data->items(),        // mảng 10 bản ghi của trang hiện tại
-        'meta'   => [
-            'current_page' => $data->currentPage(),
-            'last_page'    => $data->lastPage(),
-            'per_page'     => $data->perPage(),
-            'total'        => $data->total(),
-        ],
-    ]);
-}
+    public function __construct()
+    {
+        $this->authorizeResource(Department::class, 'departments');
+    }
+    public function index()
+    {
+        $data = Department::with('manager')->paginate(10);
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $data->items(),        // mảng 10 bản ghi của trang hiện tại
+            'meta'   => [
+                'current_page' => $data->currentPage(),
+                'last_page'    => $data->lastPage(),
+                'per_page'     => $data->perPage(),
+                'total'        => $data->total(),
+            ],
+        ]);
+    }
 
 
 

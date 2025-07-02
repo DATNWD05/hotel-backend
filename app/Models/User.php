@@ -24,7 +24,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role_id',
-        'status' 
+        'status'
     ];
 
     /**
@@ -63,5 +63,14 @@ class User extends Authenticatable
     public function createdBookings()
     {
         return $this->hasMany(Booking::class, 'created_by');
+    }
+
+    // phân quyền
+    public function hasPermission($permissionName)
+    {
+        return $this->role
+            ->permissions()
+            ->where('name', $permissionName)
+            ->exists();
     }
 }
