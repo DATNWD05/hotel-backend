@@ -678,18 +678,18 @@ class BookingController extends Controller
 
         // giảm giá
         $discountAmount = floatval($booking->discount_amount ?? 0);
-        $discountType = $booking->discount_type ?? 'percent';
         $rawTotal = $roomTotal + $serviceTotal;
+        // $discountType = $booking->discount_type ?? 'percent';
 
-        if ($discountType === 'percent') {
-            $discount = ($discountAmount > 0) ? ($rawTotal * $discountAmount / 100) : 0;
-        } elseif ($discountType === 'amount') {
-            $discount = min($discountAmount, $rawTotal); // không cho trừ quá
-        } else {
-            $discount = 0; // fallback
-        }
+        // if ($discountType === 'percent') {
+        //     $discount = ($discountAmount > 0) ? ($rawTotal * $discountAmount / 100) : 0;
+        // } elseif ($discountType === 'amount') {
+        //     $discount = min($discountAmount, $rawTotal); // không cho trừ quá
+        // } else {
+        //     $discount = 0; // fallback
+        // }
 
-        $totalAmount = $rawTotal - $discount;
+        $totalAmount = $rawTotal - $discountAmount;
 
 
         return [
@@ -697,7 +697,7 @@ class BookingController extends Controller
             'room_total' => $roomTotal,
             'room_details' => $roomDetails,
             'service_total' => $serviceTotal,
-            'discount' => $discount,
+            'discount' => $discountAmount,
             'raw_total' => $rawTotal,
             'total_amount' => $totalAmount,
         ];

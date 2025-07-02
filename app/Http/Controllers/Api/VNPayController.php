@@ -36,23 +36,23 @@ class VNPayController extends Controller
         }
 
         $discountAmount = floatval($booking->discount_amount ?? 0);
-        $discountType = $booking->discount_type ?? 'percent';
         $rawTotal = $roomTotal + $serviceTotal;
+        // $discountType = $booking->discount_type ?? 'percent';
 
-        if ($discountType === 'percent') {
-            $discount = $discountAmount > 0 ? ($rawTotal * $discountAmount / 100) : 0;
-        } elseif ($discountType === 'amount') {
-            $discount = min($discountAmount, $rawTotal);
-        } else {
-            $discount = 0;
-        }
+        // if ($discountType === 'percent') {
+        //     $discount = $discountAmount > 0 ? ($rawTotal * $discountAmount / 100) : 0;
+        // } elseif ($discountType === 'amount') {
+        //     $discount = min($discountAmount, $rawTotal);
+        // } else {
+        //     $discount = 0;
+        // }
 
-        $totalAmount = $rawTotal - $discount;
+        $totalAmount = $rawTotal - $discountAmount;
 
         return [
             'room_total' => $roomTotal,
             'service_total' => $serviceTotal,
-            'discount' => $discount,
+            'discount' => $discountAmount,
             'total_amount' => $totalAmount,
             'raw_total' => $rawTotal
         ];
