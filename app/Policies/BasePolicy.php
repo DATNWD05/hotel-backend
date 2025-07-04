@@ -11,7 +11,7 @@ class BasePolicy
      */
     public function before(User $user, $ability)
     {
-        if ($user->role_id === 1) { // Chủ hệ thống hoặc role đặc biệt
+        if ($user->role_id === 3) { // Chủ hệ thống hoặc role đặc biệt
             return true;
         }
     }

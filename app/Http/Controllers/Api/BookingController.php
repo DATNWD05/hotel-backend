@@ -609,11 +609,12 @@ class BookingController extends Controller
                 $room->save();
             }
 
-            // Tạo invoice
+            // Tạo mã hoá đơn
             $today = now()->format('Ymd');
             $countToday = Invoice::whereDate('issued_date', today())->count() + 1;
             $invoiceCode = 'INV-' . $today . '-' . str_pad($countToday, 3, '0', STR_PAD_LEFT);
 
+            // Tạo hoá đơn
             $invoice = Invoice::create([
                 'invoice_code' => $invoiceCode,
                 'booking_id' => $booking->id,
@@ -621,10 +622,9 @@ class BookingController extends Controller
                 'room_amount' => $totals['room_total'],
                 'service_amount' => $totals['service_total'],
                 'discount_amount' => $totals['discount'],
-                'deposit_amount' => $booking->deposit_amount ?? 0,
+                'deposit_amount' => $totals['deposit_amount'],
                 'total_amount' => $totals['total_amount'],
             ]);
-
 
             // Tạo payment
             Payment::create([
@@ -647,6 +647,8 @@ class BookingController extends Controller
                 'service_total' => $totals['service_total'],
                 'discount_amount' => $totals['discount'],
                 'raw_total' => $totals['raw_total'],
+                'deposit_paid' => $totals['is_deposit_paid'] ? 'yes' : 'no',
+                'deposit_amount' => $totals['deposit_amount'],
                 'total_amount' => $totals['total_amount'],
                 'invoice_id' => $invoice->id,
                 'status' => $booking->status,
@@ -669,55 +671,46 @@ class BookingController extends Controller
         }
 
         $nights = $checkIn->diffInDays($checkOut);
-
-        // Tính tiền phòng
         $roomTotal = 0;
         $roomDetails = [];
 
         foreach ($booking->rooms as $room) {
             $rate = floatval(optional($room->roomType)->base_rate ?? 0);
             $total = $rate * $nights;
-
             $roomTotal += $total;
 
             $roomDetails[] = [
                 'room_number' => $room->room_number,
                 'base_rate' => $rate,
-                'total' => $total
+                'total' => $total,
             ];
         }
 
-        // Tính tiền dịch vụ
         $serviceTotal = 0;
         foreach ($booking->services as $service) {
             $quantity = intval($service->pivot->quantity ?? 1);
             $serviceTotal += floatval($service->price) * $quantity;
         }
 
-        // giảm giá
         $discountAmount = floatval($booking->discount_amount ?? 0);
         $rawTotal = $roomTotal + $serviceTotal;
-        // $discountType = $booking->discount_type ?? 'percent';
-
-        // if ($discountType === 'percent') {
-        //     $discount = ($discountAmount > 0) ? ($rawTotal * $discountAmount / 100) : 0;
-        // } elseif ($discountType === 'amount') {
-        //     $discount = min($discountAmount, $rawTotal); // không cho trừ quá
-        // } else {
-        //     $discount = 0; // fallback
-        // }
-
         $totalAmount = $rawTotal - $discountAmount;
 
+        // Trừ tiền đặt cọc nếu đã trả
+        $depositAmount = floatval($booking->deposit_amount ?? 0);
+        $isDepositPaid = intval($booking->is_deposit_paid ?? 0);
+        $finalTotal = $isDepositPaid ? max(0, $totalAmount - $depositAmount) : $totalAmount;
 
         return [
             'nights' => $nights,
-            'room_total' => $roomTotal,
             'room_details' => $roomDetails,
+            'room_total' => $roomTotal,
             'service_total' => $serviceTotal,
             'discount' => $discountAmount,
             'raw_total' => $rawTotal,
-            'total_amount' => $totalAmount,
+            'total_amount' => $finalTotal,
+            'deposit_amount' => $depositAmount,
+            'is_deposit_paid' => $isDepositPaid,
         ];
     }
 

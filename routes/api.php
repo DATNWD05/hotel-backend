@@ -129,7 +129,7 @@ Route::post('/forgot-password', [AuthController::class, 'forgot']);
 Route::post('/reset-password', [AuthController::class, 'reset']);
 
 // Xử lý Bookings
-Route::middleware(['auth:sanctum', "role:1,2"])->group(function () {
+Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
