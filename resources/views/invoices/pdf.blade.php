@@ -1,45 +1,51 @@
+@php
+use Carbon\Carbon;
+@endphp
+
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 
 <head>
-    <meta charset="utf-8">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
     <style>
         body {
             font-family: DejaVu Sans, sans-serif;
             font-size: 14px;
             color: #333;
             padding: 40px;
-            background-color: #fff;
         }
 
         .brand {
             text-align: center;
-            font-size: 24px;
+            font-size: 22px;
             font-weight: bold;
             color: #007BFF;
-            margin-bottom: 4px;
         }
 
         .sub-brand {
             text-align: center;
-            font-size: 14px;
+            font-size: 13px;
             color: #666;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
         }
 
         h2 {
             text-align: center;
-            color: #2c3e50;
-            margin-bottom: 20px;
+            margin: 0 0 20px;
+            font-size: 18px;
             text-transform: uppercase;
         }
 
         .invoice-info {
-            margin-bottom: 20px;
-            padding: 15px;
             border: 1px solid #ccc;
-            background-color: #f8f9fa;
-            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 25px;
+            background: #f9f9f9;
+            border-radius: 5px;
         }
 
         .invoice-info p {
@@ -49,13 +55,12 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
-            background: #fff;
+            font-size: 13px;
         }
 
         th,
         td {
-            padding: 10px;
+            padding: 8px 10px;
             border: 1px solid #ddd;
             text-align: right;
         }
@@ -63,20 +68,29 @@
         th.label,
         td.label {
             text-align: left;
-            background-color: #f0f0f0;
-            font-weight: 600;
+            background: #f1f1f1;
+            font-weight: bold;
         }
 
-        tr:last-child td {
+        tr.group-header td {
+            background: #e9ecef;
             font-weight: bold;
-            background-color: #e9f7ef;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr.total-row td {
+            font-weight: bold;
+            background: #d4edda;
             color: #155724;
+            font-size: 15px;
         }
 
         .thank-you {
             text-align: center;
-            margin-top: 40px;
-            font-size: 15px;
+            margin-top: 30px;
+            font-size: 14px;
             color: #444;
         }
 
@@ -99,42 +113,94 @@
 
     <div class="invoice-info">
         <p><strong>Mã hóa đơn:</strong> {{ $invoice->invoice_code }}</p>
-        <p><strong>Ngày tạo:</strong> {{ \Carbon\Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</p>
+        <p><strong>Ngày tạo:</strong> {{ Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</p>
+        <p><strong>Check-in:</strong> {{ Carbon::parse($invoice->booking->check_in_date)->format('d/m/Y') }}</p>
+        <p><strong>Check-out:</strong> {{ Carbon::parse($invoice->booking->check_out_date)->format('d/m/Y') }}</p>
         <p><strong>Khách hàng:</strong> {{ $invoice->booking->customer->name ?? '---' }}</p>
         <p><strong>Email:</strong> {{ $invoice->booking->customer->email ?? '---' }}</p>
+        <p><strong>SĐT:</strong> {{ $invoice->booking->customer->phone ?? '---' }}</p>
     </div>
 
     <table>
-        <tr>
-            <th class="label">Tien phong</th>
-            <td>{{ number_format($invoice->room_amount, 0, ',', '.') }} đ</td>
-        </tr>
-        <tr>
-            <th class="label">Dich vu</th>
-            <td>{{ number_format($invoice->service_amount, 0, ',', '.') }} đ</td>
-        </tr>
-        <tr>
-            <th class="label">Giam gia</th>
-            <td>-{{ number_format($invoice->discount_amount, 0, ',', '.') }} đ</td>
-        </tr>
-        <tr>
-            <th class="label">Dat coc</th>
-            <td>-{{ number_format($invoice->deposit_amount, 0, ',', '.') }} đ</td>
-        </tr>
-        <tr>
-            <th class="label">TONG CONG</th>
-            <td>{{ number_format($invoice->total_amount, 0, ',', '.') }} đ</td>
-        </tr>
+        <thead>
+            <tr>
+                <th class="label">Mục</th>
+                <th>Chi tiết</th>
+                <th>Số lượng</th>
+                <th>Đơn giá</th>
+                <th>Thành tiền</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Chi tiết phòng -->
+            @if(count($invoice->booking->rooms ?? []))
+            <tr class="group-header">
+                <td colspan="5">Chi tiết phòng</td>
+            </tr>
+            @foreach ($invoice->booking->rooms as $room)
+            <tr>
+                <td class="label">Phòng {{ $room->room_number }}</td>
+                <td>{{ $room->roomType->name ?? '---' }}</td>
+                <td>{{ $room->nights }} đêm</td>
+                <td>{{ number_format($room->roomType->base_rate ?? 0, 0, ',', '.') }} đ</td>
+                <td>{{ number_format($room->room_total ?? 0, 0, ',', '.') }} đ</td>
+            </tr>
+            @endforeach
+            @endif
+
+            <!-- Dịch vụ -->
+            @if(count($invoice->booking->services ?? "Không có dịch vụ nào được sử dụng"))
+            <tr class="group-header">
+                <td colspan="5">Dịch vụ đã sử dụng</td>
+            </tr>
+            @foreach ($invoice->booking->services as $service)
+            @php
+            $qty = $service->pivot->quantity ?? 0;
+            $price = $service->price ?? 0;
+            $total = $qty * $price;
+            @endphp
+            <tr>
+                <td class="label">Dịch vụ</td>
+                <td>{{ $service->name }}</td>
+                <td>{{ $qty }}</td>
+                <td>{{ number_format($price, 0, ',', '.') }} đ</td>
+                <td>{{ number_format($total, 0, ',', '.') }} đ</td>
+            </tr>
+            @endforeach
+            @endif
+
+            <!-- Điều chỉnh -->
+            <tr class="group-header">
+                <td colspan="5">Các khoản điều chỉnh</td>
+            </tr>
+            <tr>
+                <td class="label">Giảm giá</td>
+                <td colspan="3"></td>
+                <td>-{{ number_format($invoice->discount_amount, 0, ',', '.') }} đ</td>
+            </tr>
+            <tr>
+                <td class="label">Đặt cọc</td>
+                <td colspan="3"></td>
+                <td>-{{ number_format($invoice->deposit_amount, 0, ',', '.') }} đ</td>
+            </tr>
+
+            <!-- Tổng cộng -->
+            <tr class="total-row">
+                <td class="label">TỔNG CỘNG</td>
+                <td colspan="3"></td>
+                <td>{{ number_format($invoice->total_amount, 0, ',', '.') }} đ</td>
+            </tr>
+        </tbody>
     </table>
 
     <div class="thank-you">
-        Xin chân thành cảm ơn quý khách đã tin tưởng và sử dụng dịch vụ của chúng tôi! <br>
-        Hân hạnh được phục vụ quý khách trong những lần tiếp theo.
+        Cảm ơn quý khách đã sử dụng dịch vụ của chúng tôi! <br>
+        Hân hạnh được phục vụ quý khách lần sau.
     </div>
 
     <div class="footer">
-        Hotline hỗ trợ: 0862 332 128 – Email: support@hobilo.vn<br>
-        Địa chỉ: Trịnh Văn Bô, Q. Nam Từ Liêm, TP.Hà Nội
+        Hotline: 0862 332 128 – Email: support@hobilo.vn<br>
+        Địa chỉ: Trịnh Văn Bô, Nam Từ Liêm, Hà Nội
     </div>
 
 </body>

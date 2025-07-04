@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Carbon;
 
 class InvoiceController extends Controller
 {
@@ -56,36 +57,74 @@ class InvoiceController extends Controller
 
     public function printInvoice($booking_id)
     {
-        $invoice = Invoice::with('booking.customer')
-            ->where('booking_id', $booking_id)
-            ->first();
+        $invoice = Invoice::with([
+            'booking.customer',
+            'booking.rooms.roomType',
+            'booking.services'
+        ])->where("booking_id", $booking_id)->first();
 
         if (!$invoice || !$invoice->booking || !$invoice->booking->customer) {
             return response()->json(['message' => 'Không tìm thấy thông tin khách hàng.'], 404);
         }
 
-        // Tạo thư mục invoices nếu chưa có
+        // Tính số đêm chính xác
+        $checkIn = Carbon::parse($invoice->booking->check_in_date);
+        $checkOut = Carbon::parse($invoice->booking->check_out_date);
+
+        $nights = $checkIn->diffInDays($checkOut, false);
+
+        if ($nights <= 0) {
+            return response()->json([
+                'message' => 'Ngày trả phòng phải sau ngày nhận phòng.'
+            ], 422);
+        }
+
+        // Tính tiền phòng và set lại quan hệ rooms
+        $roomsWithTotals = $invoice->booking->rooms->map(function ($room) use ($nights) {
+            $roomRate = $room->roomType->base_rate ?? 0;
+            $room->nights = $nights;
+            $room->room_total = $roomRate * $nights;
+            return $room;
+        });
+
+        $invoice->booking->setRelation('rooms', $roomsWithTotals);
+
+        // Format ngày để hiển thị
+        $invoice->formatted_checkin = $invoice->booking->check_in_date
+            ? Carbon::parse($invoice->booking->check_in_date)->format('d/m/Y') : null;
+
+        $invoice->formatted_checkout = $invoice->booking->check_out_date
+            ? Carbon::parse($invoice->booking->check_out_date)->format('d/m/Y') : null;
+
+        $invoice->formatted_issued = $invoice->issued_date
+            ? Carbon::parse($invoice->issued_date)->format('d/m/Y') : null;
+
+        // Tạo thư mục nếu chưa có
         $directory = storage_path('app/public/invoices');
         if (!File::exists($directory)) {
             File::makeDirectory($directory, 0755, true);
         }
 
-        // Tạo PDF hóa đơn và lưu
+        // Tạo file PDF
         $fileName = 'invoice_' . $invoice->id . '.pdf';
         $filePath = $directory . '/' . $fileName;
-        $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
+
+        $pdf = Pdf::loadView('invoices.pdf', [
+            'invoice' => $invoice,
+            'nights' => $nights
+        ]);
         $pdf->save($filePath);
 
-        //Gửi email nếu có
+        // Gửi email nếu có
         $email = $invoice->booking->customer->email ?? null;
         if ($email) {
             Mail::to($email)->send(new InvoiceMail($invoice, $filePath));
         }
 
-        // Gửi lệnh in
+        // In hóa đơn
         $this->printToPrinter($filePath);
 
-        // Trả về URL public cho frontend
+        // Trả link PDF
         $pdfUrl = asset('storage/invoices/' . $fileName);
 
         return response()->json([
