@@ -73,4 +73,8 @@ class User extends Authenticatable
             ->where('name', $permissionName)
             ->exists();
     }
+    public function employee()
+    {
+        return $this->hasOne(Employee::class);
+    }
 }

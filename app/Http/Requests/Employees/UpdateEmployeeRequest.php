@@ -37,8 +37,7 @@ class UpdateEmployeeRequest extends BaseFormRequest
             'cccd' => 'nullable|regex:/^[0-9]+$/|min:10|max:12',
             'department_id' => 'required|exists:departments,id',
             'hire_date' => 'required|date',
-            'status' => 'required|in:Làm việc,Nghỉ làm, Chờ Xét Duyệt',
-            'role' => 'required|in:staff,admin,user',
+            'status' => 'required|in:active,not_active',
         ];
     }
 
@@ -74,10 +73,7 @@ class UpdateEmployeeRequest extends BaseFormRequest
             'hire_date.date' => 'Ngày tuyển dụng không đúng định dạng.',
 
             'status.required' => 'Trạng thái không được để trống.',
-            'status.in' => 'Trạng thái phải là Làm việc, Nghỉ làm, Chờ Xét Duyệt.',
-
-            'role.required' => 'Vai trò không được để trống.',
-            'role.in' => 'Vai trò phải là staff, admin hoặc user.',
+            'status.in' => 'Trạng thái phải là active, not_active.',
         ];
     }
 }
