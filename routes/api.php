@@ -33,9 +33,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
-    Route::post('/users/{id}', [UserController::class, 'show']);
+    Route::get('/users/{id}', [UserController::class, 'show']);
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
+
+    Route::get('/me', [UserController::class, 'profile']);
 
     // Route Role
     Route::apiResource('role', RoleController::class); // singular path
@@ -110,7 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
 Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
 // thanh toán online cọc
-Route::post('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline']);
+Route::get('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline'])->name('deposit.vnpay.create');
 Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositReturn'])->name('vnpay.deposit.return');
 
 

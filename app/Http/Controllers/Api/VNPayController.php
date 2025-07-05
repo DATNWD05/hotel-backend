@@ -233,33 +233,30 @@ class VNPayController extends Controller
             return response()->json(['error' => 'Đơn đặt phòng đã được thanh toán đặt cọc'], 422);
         }
 
-        // Tính tiền đặt cọc: 30% tổng
+        $vnp_TmnCode    = config('vnpay.tmn_code');
+        $vnp_HashSecret = config('vnpay.hash_secret');
+        $vnp_Url        = config('vnpay.url');
+        $vnp_ReturnUrl  = config('vnpay.return_url');
+
         $depositAmount = $booking->deposit_amount;
-
-
-        // Cấu hình VNPay
-        $vnp_TmnCode    = Config::get('vnpay.tmn_code');
-        $vnp_HashSecret = Config::get('vnpay.hash_secret');
-        $vnp_Url        = Config::get('vnpay.url');
-        $vnp_ReturnUrl  = route('vnpay.deposit.return'); // Đảm bảo bạn có route tên này
-
         $orderId = 'BOOKING-DEPOSIT-' . $bookingId . '-' . time();
 
         $data = [
             'vnp_Version'    => '2.1.0',
             'vnp_Command'    => 'pay',
             'vnp_TmnCode'    => $vnp_TmnCode,
-            'vnp_Amount'     => $depositAmount * 100,
-            'vnp_CreateDate' => date('YmdHis'),
+            'vnp_Amount'     => $depositAmount * 100, // nhân 100
             'vnp_CurrCode'   => 'VND',
-            'vnp_IpAddr'     => request()->ip(),
-            'vnp_Locale'     => 'vn',
+            'vnp_TxnRef'     => $orderId,
             'vnp_OrderInfo'  => 'Thanh toán đặt cọc cho booking #' . $bookingId,
             'vnp_OrderType'  => 'other',
+            'vnp_Locale'     => 'vn',
             'vnp_ReturnUrl'  => $vnp_ReturnUrl,
-            'vnp_TxnRef'     => $orderId,
+            'vnp_IpAddr'     => $request->ip(),
+            'vnp_CreateDate' => now()->format('YmdHis'),
         ];
 
+        // Bắt buộc sắp xếp theo thứ tự tăng dần key trước khi tạo hash
         ksort($data);
         $hashData = '';
         foreach ($data as $key => $value) {
@@ -272,12 +269,16 @@ class VNPayController extends Controller
         $paymentUrl = $vnp_Url . '?' . http_build_query($data);
 
 
-        // Trả về URL thanh toán
-        return response()->json([
-            'payment_url'    => $vnp_Url . '?' . http_build_query($data),
-            'order_id'       => $orderId,
-            'deposit_amount' => $booking->deposit_amount,
-        ]);
+        // Trả về JSON cho frontend gọi hoặc redirect nếu là từ trình duyệt
+        if ($request->expectsJson()) {
+            return response()->json([
+                'payment_url'    => $paymentUrl,
+                'order_id'       => $orderId,
+                'deposit_amount' => $depositAmount,
+            ]);
+        } else {
+            return redirect()->away($paymentUrl);
+        }
     }
 
 

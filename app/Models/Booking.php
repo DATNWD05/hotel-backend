@@ -98,7 +98,7 @@ class Booking extends Model
         $this->forceFill([
             'raw_total'       => $raw,
             'discount_amount' => $discount,
-            'total_amount'    => max(0, $raw - $discount),
+            'total_amount'    => null,
         ])->save();
     }
 }

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
@@ -130,6 +131,17 @@ class UserController extends Controller
             'data' => $user
         ], 200);
     }
+
+    public function profile()
+    {
+        $user = Auth::user();
+        $employee = $user->employee;
+
+        return response()->json([
+            'user'     => $user
+        ]);
+    }
+
 
     public function update(Request $request, string $id)
     {
