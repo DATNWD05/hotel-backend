@@ -22,10 +22,11 @@ use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\PromotionController;
 
 use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
-use App\Http\Controllers\Api\ServiceCategoryController;
 
+use App\Http\Controllers\Api\ServiceCategoryController;
 use App\Http\Controllers\Api\BookingPromotionController;
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -169,4 +170,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Gán / gỡ quyền
     Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions']);
     Route::delete('roles/{role}/permissions', [RoleController::class, 'removePermissions']);
+
+    // Lấy danh sách quyền
+    Route::get('/permissions', [PermissionController::class, 'index']);
 });
