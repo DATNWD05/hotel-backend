@@ -9,133 +9,220 @@ use App\Models\Room;
 
 class StatisticsController extends Controller
 {
-    // 1. Tổng doanh thu toàn hệ thống
-    public function totalRevenue()
+    // Hàm tiện ích dùng chung để lọc theo from_date, to_date
+    protected function applyDateFilter($query, Request $request)
     {
-        $total = DB::table('bookings')
-            ->where('status', 'Checked-out')
-            ->sum('total_amount');
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
 
-        return response()->json([
-            'mess' => 'Tổng doanh thu toàn hệ thống',
-            'data' => $total
-        ]);
+        if ($fromDate && $toDate) {
+            $query->whereDate('check_out_date', '>=', $fromDate)
+                ->whereDate('check_in_date', '<=', $toDate);
+        } elseif ($fromDate) {
+            $query->whereDate('check_out_date', '>=', $fromDate);
+        } elseif ($toDate) {
+            $query->whereDate('check_in_date', '<=', $toDate);
+        }
+
+        return $query;
+    }
+
+    // 1. Tổng doanh thu toàn hệ thống
+    public function totalRevenue(Request $request)
+    {
+        $query = DB::table('bookings')->where('status', 'Checked-out');
+        $query = $this->applyDateFilter($query, $request);
+        $total = $query->sum('total_amount');
+
+        return response()->json(['mess' => 'Tổng doanh thu toàn hệ thống', 'data' => $total]);
     }
 
     // 2. Doanh thu theo ngày
-    public function revenueByDay()
+    public function revenueByDay(Request $request)
     {
-        $revenue = DB::table('bookings')
+        $query = DB::table('bookings')
             ->where('status', 'Checked-out')
             ->select(DB::raw('DATE(check_out_date) as date'), DB::raw('SUM(total_amount) as total'))
             ->groupBy('date')
-            ->orderBy('date', 'DESC')
-            ->get();
+            ->orderBy('date', 'DESC');
 
-        return response()->json([
-            'mess' => 'Lấy doanh thu theo ngày thành công',
-            'data' => $revenue
-        ]);
+        $query = $this->applyDateFilter($query, $request);
+        $revenue = $query->get();
+
+        return response()->json(['mess' => 'Lấy doanh thu theo ngày thành công', 'data' => $revenue]);
     }
 
     // 3. Tổng chi phí từng booking
-    public function totalPerBooking()
+    public function totalPerBooking(Request $request)
     {
-        $data = DB::table('bookings')
+        $query = DB::table('bookings')
             ->where('status', 'Checked-out')
-            ->select(
-                'id as booking_id',
-                DB::raw('IFNULL(total_amount, 0) as total_amount'),
-                'check_in_date',
-                'check_out_date'
-            )
-            ->orderBy('check_out_date', 'desc')
-            ->get();
+            ->select('id as booking_id', DB::raw('IFNULL(total_amount, 0) as total_amount'), 'check_in_date', 'check_out_date')
+            ->orderBy('check_out_date', 'desc');
 
-        return response()->json([
-            'mess' => 'Lấy tổng chi phí từng booking thành công',
-            'data' => $data
-        ]);
+        $query = $this->applyDateFilter($query, $request);
+        $data = $query->get();
+
+        return response()->json(['mess' => 'Lấy tổng chi phí từng booking thành công', 'data' => $data]);
     }
 
-    // 4. Tổng doanh thu theo khách hàng
-    public function revenueByCustomer()
+    // 4. Doanh thu theo khách hàng
+    public function revenueByCustomer(Request $request)
     {
-        $data = DB::table('bookings')
+        $query = DB::table('bookings')
             ->join('customers', 'bookings.customer_id', '=', 'customers.id')
             ->where('bookings.status', 'Checked-out')
-            ->select(
-                'customers.name',
-                DB::raw('SUM(COALESCE(bookings.total_amount, 0)) as total_spent')
-            )
+            ->select('customers.name', DB::raw('SUM(COALESCE(bookings.total_amount, 0)) as total_spent'))
             ->groupBy('customers.id', 'customers.name')
-            ->orderByDesc('total_spent')
-            ->limit(5)
-            ->get();
+            ->orderByDesc('total_spent');
 
-        return response()->json([
-            'mess' => 'Lấy doanh thu theo khách hàng thành công',
-            'data' => $data
-        ]);
+        $query = $this->applyDateFilter($query, $request);
+        $data = $query->limit(5)->get();
+
+        return response()->json(['mess' => 'Lấy doanh thu theo khách hàng thành công', 'data' => $data]);
     }
 
-    // 5. Tổng doanh thu theo phòng
-    public function revenueByRoom()
+    // 5. Doanh thu theo phòng
+    public function revenueByRoom(Request $request)
     {
-        $data = DB::table('booking_room')
+        $query = DB::table('booking_room')
             ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
             ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-            ->join(
-                DB::raw('(SELECT booking_id, COUNT(*) as room_count FROM booking_room GROUP BY booking_id) as br_count'),
-                'booking_room.booking_id',
-                '=',
-                'br_count.booking_id'
-            )
+            ->join(DB::raw('(SELECT booking_id, COUNT(*) as room_count FROM booking_room GROUP BY booking_id) as br_count'), 'booking_room.booking_id', '=', 'br_count.booking_id')
             ->where('bookings.status', 'Checked-out')
-            ->select(
-                'rooms.room_number',
-                DB::raw('SUM(bookings.total_amount / br_count.room_count) as total_revenue')
-            )
+            ->select('rooms.room_number', DB::raw('SUM(bookings.total_amount / br_count.room_count) as total_revenue'))
             ->groupBy('rooms.id', 'rooms.room_number')
-            ->orderByDesc('total_revenue')
-            ->limit(5)
-            ->get();
+            ->orderByDesc('total_revenue');
 
-        return response()->json([
-            'mess' => 'Lấy doanh thu theo phòng thành công',
-            'data' => $data
-        ]);
+        $query = $this->applyDateFilter($query, $request);
+        $data = $query->limit(5)->get();
+
+        return response()->json(['mess' => 'Lấy doanh thu theo phòng thành công', 'data' => $data]);
     }
 
-    // 6. Tỷ lệ lấp đầy phòng hiện tại
-    public function occupancyRate()
+    // 6. Doanh thu theo loại phòng
+    public function revenueByRoomType(Request $request)
+    {
+        $query = DB::table('booking_room')
+            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
+            ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
+            ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
+            ->where('bookings.status', 'Checked-out')
+            ->select('room_types.name as room_type', DB::raw('SUM(booking_room.rate) as total_revenue'))
+            ->groupBy('room_types.id', 'room_types.name')
+            ->orderByDesc('total_revenue');
+
+        $query = $this->applyDateFilter($query, $request);
+        $data = $query->get();
+
+        return response()->json(['message' => 'Doanh thu theo loại phòng', 'data' => $data]);
+    }
+
+    // 7. Tổng doanh thu từ dịch vụ
+    public function totalServiceRevenue(Request $request)
+    {
+        $query = DB::table('booking_service')
+            ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
+            ->join('services', 'booking_service.service_id', '=', 'services.id')
+            ->where('bookings.status', 'Checked-out')
+            ->select(DB::raw('SUM(booking_service.quantity * services.price) as total'));
+
+        $query = $this->applyDateFilter($query, $request);
+        $total = $query->value('total');
+
+        return response()->json(['message' => 'Tổng doanh thu dịch vụ', 'total_service_revenue' => $total ?? 0]);
+    }
+
+    // 8. Số lượng phòng được đặt theo loại
+    public function roomTypeBookingCount(Request $request)
+    {
+        $query = DB::table('booking_room')
+            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
+            ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
+            ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
+            ->whereIn('bookings.status', ['Checked-in', 'Checked-out'])
+            ->select('room_types.name as room_type', DB::raw('COUNT(booking_room.id) as total_booked'))
+            ->groupBy('room_types.id', 'room_types.name')
+            ->orderByDesc('total_booked');
+
+        $query = $this->applyDateFilter($query, $request);
+        $data = $query->get();
+
+        return response()->json(['message' => 'Số lượng phòng được đặt theo loại', 'data' => $data]);
+    }
+
+    // 9. Top khách hàng đặt nhiều nhất
+    public function topFrequentCustomers(Request $request)
+    {
+        $query = DB::table('bookings')
+            ->join('customers', 'bookings.customer_id', '=', 'customers.id')
+            ->whereIn('bookings.status', ['Checked-in', 'Checked-out'])
+            ->select('customers.id as customer_id', 'customers.name', DB::raw('COUNT(bookings.id) as total_bookings'))
+            ->groupBy('customers.id', 'customers.name')
+            ->orderByDesc('total_bookings');
+
+        $query = $this->applyDateFilter($query, $request, 'bookings.check_in_date');
+        $data = $query->limit(5)->get();
+
+        return response()->json(['mess' => 'Lấy top khách hàng đặt nhiều nhất thành công', 'data' => $data]);
+    }
+
+    // 10. Tổng số booking theo tháng
+    public function bookingsByMonth(Request $request)
+    {
+        $query = DB::table('bookings')
+            ->whereIn('status', ['Checked-in', 'Checked-out'])
+            ->select(DB::raw("DATE_FORMAT(created_at, '%Y-%m') as month"), DB::raw('COUNT(*) as total'))
+            ->groupBy('month')
+            ->orderBy('month', 'DESC');
+
+        $query = $this->applyDateFilter($query, $request, 'created_at');
+        $data = $query->get();
+
+        return response()->json(['mess' => 'Thống kê tổng số booking theo tháng thành công', 'data' => $data]);
+    }
+
+    // 11. Tỷ lệ lấp đầy phòng
+    public function occupancyRate(Request $request)
     {
         $totalRooms = Room::count();
 
-        $occupiedRooms = DB::table('booking_room')
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
+
+        $occupiedRoomsQuery = DB::table('booking_room')
             ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', 'Checked-in')
-            ->whereDate('bookings.check_in_date', '<=', now())
-            ->whereDate('bookings.check_out_date', '>', now())
-            ->count();
+            ->where('bookings.status', 'Checked-in');
+
+        if ($fromDate && $toDate) {
+            // Trường hợp có chọn khoảng thời gian
+            $occupiedRoomsQuery->whereDate('bookings.check_in_date', '<=', $toDate)
+                ->whereDate('bookings.check_out_date', '>=', $fromDate);
+        } else {
+            // Mặc định: tính tại thời điểm hiện tại
+            $occupiedRoomsQuery->whereDate('bookings.check_in_date', '<=', now())
+                ->whereDate('bookings.check_out_date', '>', now());
+        }
+
+        $occupiedRooms = $occupiedRoomsQuery->count();
 
         $rate = $totalRooms > 0 ? round(($occupiedRooms / $totalRooms) * 100, 2) : 0;
 
         return response()->json([
-            'mess' => 'Tỷ lệ lấp đầy phòng hiện tại',
+            'mess' => 'Tỷ lệ lấp đầy phòng',
             'total_rooms' => $totalRooms,
             'occupied_rooms' => $occupiedRooms,
             'occupancy_rate' => $rate
         ]);
     }
 
-    // 7. Trung bình thời gian lưu trú (ngày)
-    public function averageStayDuration()
+    // 12. Trung bình thời gian lưu trú
+    public function averageStayDuration(Request $request)
     {
-        $average = DB::table('bookings')
-            ->where('status', 'Checked-out')
-            ->select(DB::raw('AVG(DATEDIFF(check_out_date, check_in_date)) as avg_days'))
-            ->first();
+        $query = DB::table('bookings')->where('status', 'Checked-out');
+        $query = $this->applyDateFilter($query, $request);
+
+        $average = $query->select(DB::raw('AVG(DATEDIFF(check_out_date, check_in_date)) as avg_days'))->first();
 
         return response()->json([
             'mess' => 'Tính trung bình thời gian lưu trú thành công',
@@ -143,16 +230,20 @@ class StatisticsController extends Controller
         ]);
     }
 
-    // 8. Tỷ lệ huỷ phòng
-    public function cancellationRate()
+    // 13. Tỷ lệ huỷ phòng
+    public function cancellationRate(Request $request)
     {
-        $total = DB::table('bookings')
-            ->whereIn('status', ['Checked-in', 'Checked-out', 'Canceled']) // chỉ tính các trạng thái có thật
-            ->count();
+        $queryTotal = DB::table('bookings')
+            ->whereIn('status', ['Checked-in', 'Checked-out', 'Canceled']);
 
-        $cancelled = DB::table('bookings')
-            ->whereRaw('LOWER(status) = ?', ['canceled']) // chống sai chính tả, viết hoa
-            ->count();
+        $queryCancel = DB::table('bookings')
+            ->whereRaw('LOWER(status) = ?', ['canceled']);
+
+        $queryTotal = $this->applyDateFilter($queryTotal, $request);
+        $queryCancel = $this->applyDateFilter($queryCancel, $request);
+
+        $total = $queryTotal->count();
+        $cancelled = $queryCancel->count();
 
         $rate = $total > 0 ? round(($cancelled / $total) * 100, 2) : 0;
 
@@ -164,107 +255,12 @@ class StatisticsController extends Controller
         ]);
     }
 
-    // 9. Top khách hàng đặt nhiều nhất
-    public function topFrequentCustomers()
-    {
-        $data = DB::table('bookings')
-            ->join('customers', 'bookings.customer_id', '=', 'customers.id')
-            ->whereIn('bookings.status', ['Checked-in', 'Checked-out']) // lọc đơn hợp lệ
-            ->select(
-                'customers.id as customer_id',
-                'customers.name',
-                DB::raw('COUNT(bookings.id) as total_bookings')
-            )
-            ->groupBy('customers.id', 'customers.name')
-            ->orderByDesc('total_bookings')
-            ->limit(5)
-            ->get();
-
-        return response()->json([
-            'mess' => 'Lấy top khách hàng đặt nhiều nhất thành công',
-            'data' => $data
-        ]);
-    }
-
-    // 10. Tổng số booking theo tháng
-    public function bookingsByMonth()
-    {
-        $data = DB::table('bookings')
-            ->whereIn('status', ['Checked-in', 'Checked-out']) // chỉ tính đơn hợp lệ
-            ->select(
-                DB::raw("DATE_FORMAT(created_at, '%Y-%m') as month"),
-                DB::raw('COUNT(*) as total')
-            )
-            ->groupBy('month')
-            ->orderBy('month', 'DESC')
-            ->get();
-
-        return response()->json([
-            'mess' => 'Thống kê tổng số booking theo tháng thành công',
-            'data' => $data
-        ]);
-    }
-
-    // 11. Doanh thu theo loại phòng
-    public function revenueByRoomType()
-    {
-        $data = DB::table('booking_room')
-            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-            ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
-            ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
-            ->where('bookings.status', 'Checked-out')
-            ->select('room_types.name as room_type', DB::raw('SUM(booking_room.rate) as total_revenue'))
-            ->groupBy('room_types.id', 'room_types.name')
-            ->orderByDesc('total_revenue')
-            ->get();
-
-        return response()->json([
-            'message' => 'Doanh thu theo loại phòng',
-            'data' => $data,
-        ]);
-    }
-
-    // 12. Tổng doanh thu từ dịch vụ
-    public function totalServiceRevenue()
-    {
-        $total = DB::table('booking_service')
-            ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
-            ->join('services', 'booking_service.service_id', '=', 'services.id')
-            ->where('bookings.status', 'Checked-out')
-            ->select(DB::raw('SUM(booking_service.quantity * services.price) as total'))
-            ->value('total');
-
-        return response()->json([
-            'message' => 'Tổng doanh thu dịch vụ',
-            'total_service_revenue' => $total ?? 0,
-        ]);
-    }
-
-    // 13. Số lượng phòng được đặt theo loại
-    public function roomTypeBookingCount()
-    {
-        $data = DB::table('booking_room')
-            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-            ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
-            ->select('room_types.name as room_type', DB::raw('COUNT(booking_room.id) as total_booked'))
-            ->groupBy('room_types.id', 'room_types.name')
-            ->orderByDesc('total_booked')
-            ->get();
-
-        return response()->json([
-            'message' => 'Số lượng phòng được đặt theo loại',
-            'data' => $data,
-        ]);
-    }
-
-    // 14. Bảng doanh thu
-
+    // 14. Bảng doanh thu chi tiết theo booking
     public function revenueTable(Request $request)
     {
-        $perPage = $request->input('per_page', 10); // mặc định 10 mỗi trang
+        $perPage = $request->input('per_page', 10);
         $page = $request->input('page', 1);
 
-        // Query chính có phân trang
         $query = DB::table('bookings')
             ->join('customers', 'bookings.customer_id', '=', 'customers.id')
             ->join('booking_room', 'bookings.id', '=', 'booking_room.booking_id')
@@ -284,17 +280,18 @@ class StatisticsController extends Controller
             )
             ->orderBy('bookings.created_at', 'desc');
 
+        $query = $this->applyDateFilter($query, $request, 'bookings.created_at');
         $paginated = $query->paginate($perPage, ['*'], 'page', $page);
 
-        // Tóm tắt tổng
         $summary = DB::table('bookings')
-            ->whereIn('status', ['Checked-in', 'Checked-out', 'Pending'])
-            ->selectRaw('
+            ->whereIn('status', ['Checked-in', 'Checked-out', 'Pending']);
+        $summary = $this->applyDateFilter($summary, $request);
+
+        $summaryData = $summary->selectRaw('
             SUM(total_amount) as total_amount,
             SUM(deposit_amount) as deposit_amount,
             SUM(total_amount - deposit_amount) as remaining_amount
-        ')
-            ->first();
+        ')->first();
 
         return response()->json([
             'message' => 'Dữ liệu bảng doanh thu',
@@ -306,18 +303,18 @@ class StatisticsController extends Controller
                 'total' => $paginated->total()
             ],
             'summary' => [
-                'total_amount' => (int) $summary->total_amount,
-                'deposit_amount' => (int) $summary->deposit_amount,
-                'remaining_amount' => (int) $summary->remaining_amount
+                'total_amount' => (int) $summaryData->total_amount,
+                'deposit_amount' => (int) $summaryData->deposit_amount,
+                'remaining_amount' => (int) $summaryData->remaining_amount
             ]
         ]);
     }
 
-    // 15. Dịch vụ đã sử dụng
+    // 15. Bảng dịch vụ đã sử dụng
     public function bookingServiceTable(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $currentPage = $request->input('page', 1);
+        $page = $request->input('page', 1);
 
         $query = DB::table('booking_service')
             ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
@@ -341,96 +338,49 @@ class StatisticsController extends Controller
             )
             ->orderBy('booking_service.created_at', 'desc');
 
+        $query = $this->applyDateFilter($query, $request, 'booking_service.created_at');
+
         $total = $query->count();
+        $data = $query->forPage($page, $perPage)->get();
 
-        $data = $query
-            ->forPage($currentPage, $perPage)
-            ->get();
-
-        // Tính tổng
         $summary = DB::table('booking_service')
-            ->join('services', 'booking_service.service_id', '=', 'services.id')
-            ->select(DB::raw('SUM(booking_service.quantity * services.price) as total_amount'))
-            ->first();
+            ->join('services', 'booking_service.service_id', '=', 'services.id');
+        $summary = $this->applyDateFilter($summary, $request, 'booking_service.created_at');
+
+        $summaryData = $summary->select(DB::raw('SUM(booking_service.quantity * services.price) as total_amount'))->first();
 
         return response()->json([
             'message' => 'Dữ liệu bảng dịch vụ',
             'data' => $data,
             'pagination' => [
-                'current_page' => $currentPage,
+                'current_page' => $page,
                 'per_page' => $perPage,
                 'total' => $total,
                 'last_page' => ceil($total / $perPage),
             ],
             'summary' => [
-                'total_amount' => $summary->total_amount ?? 0,
+                'total_amount' => $summaryData->total_amount ?? 0,
             ]
         ]);
     }
 
-    // 16. Trang thống kê tổng hợp
-    public function summaryDashboard()
+    // 16. Trang tổng hợp dashboard
+    public function summaryDashboard(Request $request)
     {
-        return response()->json([
-            'mess' => 'Tổng hợp dữ liệu thống kê cho dashboard thành công',
-            'data' => [
-                'total_revenue' => [
-                    'mess' => 'Tổng doanh thu toàn hệ thống',
-                    'data' => $this->totalRevenue()->getData()->data,
-                ],
-                'revenue_by_day' => [
-                    'mess' => 'Lấy doanh thu theo ngày thành công',
-                    'data' => $this->revenueByDay()->getData()->data,
-                ],
-                'revenue_by_room' => [
-                    'mess' => 'Lấy doanh thu theo phòng thành công',
-                    'data' => $this->revenueByRoom()->getData()->data,
-                ],
-                'revenue_by_customer' => [
-                    'mess' => 'Lấy doanh thu theo khách hàng thành công',
-                    'data' => $this->revenueByCustomer()->getData()->data,
-                ],
-                'revenue_by_room_type' => [
-                    'mess' => 'Doanh thu theo loại phòng',
-                    'data' => $this->revenueByRoomType()->getData()->data,
-                ],
-                'room_type_booking_count' => [
-                    'mess' => 'Số lượng phòng được đặt theo loại',
-                    'data' => $this->roomTypeBookingCount()->getData()->data,
-                ],
-                'total_service_revenue' => [
-                    'mess' => 'Tổng doanh thu dịch vụ',
-                    'total_service_revenue' => $this->totalServiceRevenue()->getData()->total_service_revenue,
-                ],
-                'occupancy_rate' => [
-                    'mess' => 'Tỷ lệ lấp đầy phòng hiện tại',
-                    'occupancy_rate' => $this->occupancyRate()->getData()->occupancy_rate,
-                    'total_rooms' => $this->occupancyRate()->getData()->total_rooms,
-                    'occupied_rooms' => $this->occupancyRate()->getData()->occupied_rooms,
-                ],
-                'average_stay_duration' => [
-                    'mess' => 'Tính trung bình thời gian lưu trú thành công',
-                    'average_stay_days' => $this->averageStayDuration()->getData()->average_stay_days,
-                ],
-                'cancellation_rate' => [
-                    'mess' => 'Tính tỷ lệ huỷ phòng thành công',
-                    'cancellation_rate' => $this->cancellationRate()->getData()->cancellation_rate,
-                    'total_bookings' => $this->cancellationRate()->getData()->total_bookings,
-                    'cancelled_bookings' => $this->cancellationRate()->getData()->cancelled_bookings,
-                ],
-                'top_customers' => [
-                    'mess' => 'Lấy top khách hàng đặt nhiều nhất thành công',
-                    'data' => $this->topFrequentCustomers()->getData()->data,
-                ],
-                'bookings_by_month' => [
-                    'mess' => 'Thống kê tổng số booking theo tháng thành công',
-                    'data' => $this->bookingsByMonth()->getData()->data,
-                ],
-                'total_per_booking' => [
-                    'mess' => 'Tổng chi phí từng booking',
-                    'data' => $this->totalPerBooking()->getData()->data,
-                ],
-            ]
-        ]);
+        return response()->json(['mess' => 'Tổng hợp dữ liệu thống kê cho dashboard thành công', 'data' => [
+            'total_revenue' => $this->totalRevenue($request)->getData(),
+            'revenue_by_day' => $this->revenueByDay($request)->getData(),
+            'revenue_by_room' => $this->revenueByRoom($request)->getData(),
+            'revenue_by_customer' => $this->revenueByCustomer($request)->getData(),
+            'revenue_by_room_type' => $this->revenueByRoomType($request)->getData(),
+            'room_type_booking_count' => $this->roomTypeBookingCount($request)->getData(),
+            'total_service_revenue' => $this->totalServiceRevenue($request)->getData(),
+            'occupancy_rate' => $this->occupancyRate($request)->getData(),
+            'average_stay_duration' => $this->averageStayDuration($request)->getData(),
+            'cancellation_rate' => $this->cancellationRate($request)->getData(),
+            'top_customers' => $this->topFrequentCustomers($request)->getData(),
+            'bookings_by_month' => $this->bookingsByMonth($request)->getData(),
+            'total_per_booking' => $this->totalPerBooking($request)->getData(),
+        ]]);
     }
 }
