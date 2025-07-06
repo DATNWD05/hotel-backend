@@ -2,6 +2,9 @@
 
 namespace App\Policies;
 
+use App\Policies\BasePolicy;
+
+
 class RolePolicy extends BasePolicy
 {
     public function assign($user, $role)

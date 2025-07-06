@@ -17,6 +17,7 @@ class CustomerController extends Controller
     {
         $this->authorizeResource(Customer::class, 'customer');
     }
+
     public function index()
     {
         $data = Customer::paginate(10);
@@ -33,16 +34,12 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show(Customer $customer)
     {
-        $customer = Customer::with([
+        $customer->load([
             'bookings.rooms.roomType.amenities',
             'bookings.services'
-        ])->find($id);
-
-        if (!$customer) {
-            return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
-        }
+        ]);
 
         $bookingHistory = $customer->bookings->map(function ($booking) {
             return [
@@ -68,14 +65,11 @@ class CustomerController extends Controller
             ];
         });
 
-        // Gộp thông tin khách hàng và lịch sử đặt phòng
-        $customerData = $customer->toArray(); // lấy toàn bộ thông tin khách hàng gốc
-        $customerData['booking_history'] = $bookingHistory; // thêm trường lịch sử
+        $customerData = $customer->toArray();
+        $customerData['booking_history'] = $bookingHistory;
 
         return response()->json($customerData);
     }
-
-
 
     public function store(Request $request)
     {
@@ -108,13 +102,8 @@ class CustomerController extends Controller
         return response()->json($customer, 201);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, Customer $customer)
     {
-        $customer = Customer::find($id);
-        if (!$customer) {
-            return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
-        }
-
         $data = $request->validate([
             'cccd' => [
                 'required',

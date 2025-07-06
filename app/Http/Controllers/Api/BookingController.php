@@ -25,7 +25,7 @@ class BookingController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Booking::class, 'bookings');
+        $this->authorizeResource(Booking::class, 'booking');
     }
     /**
      * Hiển thị danh sách tất cả các đơn đặt phòng.
@@ -44,15 +44,15 @@ class BookingController extends Controller
     }
 
 
-    public function show($id)
+    public function show(Booking $booking)
     {
-        $booking = Booking::with([
+        $booking->load([
             'customer',
             'rooms.roomType.amenities',
             'creator',
             'services',
             'promotions',
-        ])->findOrFail($id);
+        ]);
 
         // Lấy dịch vụ theo phòng
         $servicesByRoom = DB::table('booking_service')
@@ -68,7 +68,6 @@ class BookingController extends Controller
             ->get()
             ->groupBy('room_id');
 
-        // Thêm danh sách dịch vụ vào từng phòng
         $booking->rooms->transform(function ($room) use ($servicesByRoom) {
             $room->services = $servicesByRoom[$room->id] ?? collect();
             return $room;
@@ -78,6 +77,7 @@ class BookingController extends Controller
             'booking' => $booking,
         ]);
     }
+
 
 
 

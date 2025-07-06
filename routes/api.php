@@ -22,12 +22,12 @@ use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\PromotionController;
 
 use App\Http\Controllers\Api\DepartmentController;
-use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
-
 use App\Http\Controllers\Api\ServiceCategoryController;
+
 use App\Http\Controllers\Api\BookingPromotionController;
+use App\Http\Controllers\Api\PermissionController;
 
 Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -119,7 +119,7 @@ Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositRetur
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
-    Route::get('/customers/{id}', [CustomerController::class, 'show']);
+    Route::get('/customers/{customer}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
     Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
@@ -135,10 +135,10 @@ Route::post('/reset-password', [AuthController::class, 'reset']);
 Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
-    Route::get('/bookings/{id}', [BookingController::class, 'show']);
-    Route::put('/bookings/{id}', [BookingController::class, 'update']);
-    Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
-    Route::post('/bookings/{id}/deposit', [BookingController::class, 'payDeposit']);
+    Route::get('/bookings/{booking}', [BookingController::class, 'show']);
+    Route::put('/bookings/{booking}', [BookingController::class, 'update']);
+    Route::post('/bookings/{booking}/add-services', [BookingController::class, 'addServices']);
+    Route::post('/bookings/{booking}/deposit', [BookingController::class, 'payDeposit']);
 
 
     // xử lí trạng thái bookings
