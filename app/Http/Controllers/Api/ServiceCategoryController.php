@@ -13,8 +13,9 @@ class ServiceCategoryController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(ServiceCategory::class, 'service-categories');
+        $this->authorizeResource(ServiceCategory::class, 'service_category');
     }
+
     // Lấy tất cả danh mục dịch vụ
     public function index()
     {
@@ -34,13 +35,12 @@ class ServiceCategoryController extends Controller
 
 
     // Lấy danh mục dịch vụ theo ID
-    public function show($id)
+    public function show(ServiceCategory $serviceCategory)
     {
-        $category = ServiceCategory::findOrFail($id);  // Lấy danh mục dịch vụ theo ID
         return response()->json([
             'message' => 'Thông tin danh mục dịch vụ',
-            'data' => $category
-        ], 200);  // Trả về thông tin danh mục dịch vụ với thông báo thành công
+            'data' => $serviceCategory
+        ], 200);
     }
 
     // Tạo mới danh mục dịch vụ
@@ -69,9 +69,8 @@ class ServiceCategoryController extends Controller
     }
 
     // Cập nhật danh mục dịch vụ
-    public function update(Request $request, $id)
+    public function update(Request $request, ServiceCategory $serviceCategory)
     {
-        // Xác thực dữ liệu đầu vào
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
@@ -83,39 +82,29 @@ class ServiceCategoryController extends Controller
             'description.max' => 'Mô tả không được quá 500 ký tự.',
         ]);
 
-        // Tìm danh mục dịch vụ theo ID
-        $category = ServiceCategory::findOrFail($id);
-
-        // Cập nhật dữ liệu
-        $category->update([
+        $serviceCategory->update([
             'name' => $request->name,
             'description' => $request->description,
         ]);
 
-        // Trả về thông báo thành công
         return response()->json([
             'message' => 'Danh mục dịch vụ đã được cập nhật thành công.',
-            'data' => $category
-        ], 200);  // Trả về thông tin danh mục đã cập nhật
+            'data' => $serviceCategory
+        ], 200);
     }
-
     // Xóa danh mục dịch vụ
-    public function destroy($id)
+    public function destroy(ServiceCategory $serviceCategory)
     {
-        $category = ServiceCategory::findOrFail($id);
-
-        // Kiểm tra nếu có dịch vụ liên quan
-        if ($category->services()->count() > 0) {
+        if ($serviceCategory->services()->count() > 0) {
             return response()->json([
                 'message' => 'Không thể xóa danh mục vì vẫn còn dịch vụ liên kết.',
-            ], 400); // 400 Bad Request
+            ], 400);
         }
 
-        $category->delete();
+        $serviceCategory->delete();
 
         return response()->json([
             'message' => 'Danh mục dịch vụ đã được xóa thành công.',
-
-        ], 200); // 200 thay vì 204
+        ], 200);
     }
 }

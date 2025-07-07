@@ -34,14 +34,16 @@ class ServiceController extends Controller
     }
 
     // Lấy dịch vụ theo ID
-    public function show($id)
+    public function show(Service $service)
     {
-        $service = Service::with('category')->findOrFail($id);  // Lấy dịch vụ theo ID
+        $service->load('category');
+
         return response()->json([
             'message' => 'Thông tin dịch vụ',
             'data' => $service
-        ], 200); // Trả về thông tin dịch vụ với thông báo thành công
+        ], 200);
     }
+
 
     // Tạo mới dịch vụ
     public function store(Request $request)
@@ -71,9 +73,8 @@ class ServiceController extends Controller
     }
 
     // Cập nhật dịch vụ
-    public function update(Request $request, $id)
+    public function update(Request $request, Service $service)
     {
-        // Xác thực dữ liệu đầu vào
         $request->validate([
             'name' => 'required|string|max:255',
             'category_id' => 'required|exists:service_categories,id',
@@ -87,31 +88,21 @@ class ServiceController extends Controller
             'price.numeric' => 'Giá dịch vụ phải là số.',
         ]);
 
-        // Tìm dịch vụ theo ID
-        $service = Service::findOrFail($id);
-
-        // Cập nhật dịch vụ
         $service->update($request->all());
 
-        // Trả về thông báo thành công
         return response()->json([
             'message' => 'Dịch vụ đã được cập nhật thành công.',
             'data' => $service
-        ], 200);  // Trả về dịch vụ đã cập nhật
+        ], 200);
     }
 
     // Xóa dịch vụ
-    public function destroy($id)
+    public function destroy(Service $service)
     {
-        // Tìm dịch vụ theo ID
-        $service = Service::findOrFail($id);
-
-        // Xóa dịch vụ
         $service->delete();
 
-        // Trả về thông báo thành công
         return response()->json([
             'message' => 'Dịch vụ đã được xóa thành công.'
-        ], 204);  // Trả về trạng thái 204 No Content
+        ], 204);
     }
 }

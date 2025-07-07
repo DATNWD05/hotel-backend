@@ -54,7 +54,6 @@ class BookingController extends Controller
             'promotions',
         ]);
 
-        // Lấy dịch vụ theo phòng
         $servicesByRoom = DB::table('booking_service')
             ->join('services', 'booking_service.service_id', '=', 'services.id')
             ->select(
@@ -73,14 +72,8 @@ class BookingController extends Controller
             return $room;
         });
 
-        return response()->json([
-            'booking' => $booking,
-        ]);
+        return response()->json(['booking' => $booking]);
     }
-
-
-
-
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -226,9 +219,7 @@ class BookingController extends Controller
         ]);
     }
 
-
-
-    public function update(Request $request, $id)
+    public function update(Request $request, Booking $booking)
     {
         $validated = $request->validate([
             'customer.cccd'          => 'required|string|max:20',
@@ -258,7 +249,8 @@ class BookingController extends Controller
             'deposit_amount'         => 'nullable|numeric|min:0',
         ]);
 
-        $booking = Booking::with(['rooms.roomType', 'services', 'promotions', 'customer'])->findOrFail($id);
+        // ✅ Load relationships
+        $booking->load(['rooms.roomType', 'services', 'promotions', 'customer']);
 
         $customer = Customer::updateOrCreate(
             ['cccd' => $validated['customer']['cccd']],
@@ -318,7 +310,7 @@ class BookingController extends Controller
         $oldDeposit = $booking->deposit_amount;
         $newDeposit = $validated['deposit_amount'] ?? 0;
 
-        // Cập nhật thông tin chính trước
+        // Cập nhật thông tin chính
         $booking->update([
             'customer_id'     => $customer->id,
             'check_in_date'   => $validated['check_in_date'],
@@ -361,15 +353,13 @@ class BookingController extends Controller
             Mail::to($customer->email)->send(new DepositLinkMail($booking, $depositUrl));
         }
 
-
         return response()->json([
             'message' => 'Cập nhật đơn đặt phòng thành công',
             'data'    => $booking->fresh()->load(['customer', 'rooms.roomType', 'services', 'promotions']),
         ]);
     }
 
-
-    public function addServices(Request $request, $id)
+    public function addServices(Request $request, Booking $booking)
     {
         $validated = $request->validate([
             'services' => 'required|array|min:1',
@@ -378,21 +368,19 @@ class BookingController extends Controller
             'services.*.quantity'   => 'required|integer|min:1',
         ]);
 
-        $booking = Booking::with(['services', 'rooms'])->findOrFail($id);
+        $booking->load(['services', 'rooms']);
 
         foreach ($validated['services'] as $srv) {
             $roomId     = $srv['room_id'] ?? null;
             $serviceId  = $srv['service_id'];
             $quantity   = $srv['quantity'];
 
-            // Nếu có room_id thì kiểm tra phòng có thuộc booking không
             if ($roomId && !$booking->rooms->contains('id', $roomId)) {
                 return response()->json([
-                    'message' => "Phòng ID {$roomId} không thuộc booking này."
+                    'message' => "Ph\u00f2ng ID {$roomId} kh\u00f4ng thu\u1ed9c booking n\u00e0y."
                 ], 422);
             }
 
-            // Kiểm tra dịch vụ đã có chưa (theo room_id hoặc null)
             $existing = DB::table('booking_service')
                 ->where('booking_id', $booking->id)
                 ->where('service_id', $serviceId)
@@ -406,7 +394,6 @@ class BookingController extends Controller
                 ->first();
 
             if ($existing) {
-                // Nếu đã có thì cập nhật số lượng
                 DB::table('booking_service')
                     ->where('id', $existing->id)
                     ->update([
@@ -414,10 +401,9 @@ class BookingController extends Controller
                         'updated_at' => now()
                     ]);
             } else {
-                // Nếu chưa có thì thêm mới
                 DB::table('booking_service')->insert([
                     'booking_id' => $booking->id,
-                    'room_id'    => $roomId, // Có thể null
+                    'room_id'    => $roomId,
                     'service_id' => $serviceId,
                     'quantity'   => $quantity,
                     'created_at' => now(),
@@ -426,30 +412,24 @@ class BookingController extends Controller
             }
         }
 
-        // Tính lại tổng tiền
         $booking->load(['services', 'rooms.roomType', 'promotions']);
         $booking->recalculateTotal();
 
         return response()->json([
-            'message' => 'Thêm dịch vụ thành công',
+            'message' => 'Th\u00eam d\u1ecbch v\u1ee5 th\u00e0nh c\u00f4ng',
             'data'    => $booking->load(['services'])
         ]);
     }
-
     // thông tin khi checkin
-    public function showCheckInInfo($id)
+    public function showCheckInInfo(Booking $booking)
     {
-        $booking = Booking::with([
+        $booking->load([
             'customer',
             'creator',
             'rooms.roomType.amenities',
             'services',
             'promotions'
-        ])->find($id);
-
-        if (!$booking) {
-            return response()->json(['error' => 'Không tìm thấy booking'], 404);
-        }
+        ]);
 
         return response()->json([
             'booking_id' => $booking->id,
@@ -500,18 +480,13 @@ class BookingController extends Controller
         ]);
     }
 
+
     /**
      * API thực hiện hành động check-in
      * POST /api/check-in/{id}
      */
-    public function checkIn($id, Request $request)
+    public function checkIn(Booking $booking)
     {
-        $booking = Booking::with('rooms')->find($id);
-
-        if (!$booking) {
-            return response()->json(['error' => 'Không tìm thấy booking'], 404);
-        }
-
         if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
             return response()->json([
                 'error' => 'Booking hiện không ở trạng thái cho phép check-in'
@@ -549,9 +524,9 @@ class BookingController extends Controller
         }
     }
 
-    public function checkOut($id)
+    public function checkOut(Booking $booking)
     {
-        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
+        $booking->load(['rooms.roomType', 'services']);
 
         try {
             $totals = $this->calculateBookingTotals($booking);
@@ -574,11 +549,8 @@ class BookingController extends Controller
     }
 
 
-    public function cancel($id)
+    public function cancel(Booking $booking)
     {
-        $booking = Booking::findOrFail($id);
-
-        // Nếu đã check-out hoặc đang ở thì không cho huỷ
         if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
             return response()->json([
                 'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
@@ -595,9 +567,9 @@ class BookingController extends Controller
         ]);
     }
 
-    public function payByCash($id)
+    public function payByCash(Booking $booking)
     {
-        $booking = Booking::with(['rooms.roomType', 'services'])->findOrFail($id);
+        $booking->load(['rooms.roomType', 'services']);
 
         if ($booking->status === 'Checked-out') {
             return response()->json(['error' => 'Đơn này đã được thanh toán!'], 400);
@@ -608,24 +580,20 @@ class BookingController extends Controller
 
             $totals = $this->calculateBookingTotals($booking);
 
-            // Cập nhật trạng thái booking
             $booking->status = 'Checked-out';
             $booking->total_amount = $totals['total_amount'];
             $booking->check_out_at = now();
             $booking->save();
 
-            // Cập nhật trạng thái phòng
             foreach ($booking->rooms as $room) {
                 $room->status = 'available';
                 $room->save();
             }
 
-            // Tạo mã hoá đơn
             $today = now()->format('Ymd');
             $countToday = Invoice::whereDate('issued_date', today())->count() + 1;
             $invoiceCode = 'INV-' . $today . '-' . str_pad($countToday, 3, '0', STR_PAD_LEFT);
 
-            // Tạo hoá đơn
             $invoice = Invoice::create([
                 'invoice_code' => $invoiceCode,
                 'booking_id' => $booking->id,
@@ -637,7 +605,6 @@ class BookingController extends Controller
                 'total_amount' => $totals['total_amount'],
             ]);
 
-            // Tạo payment
             Payment::create([
                 'invoice_id' => $invoice->id,
                 'amount' => $totals['total_amount'],
@@ -672,7 +639,7 @@ class BookingController extends Controller
     }
 
 
-    private function calculateBookingTotals($booking)
+    private function calculateBookingTotals(Booking $booking)
     {
         $checkIn = Carbon::parse($booking->check_in_date);
         $checkOut = Carbon::parse($booking->check_out_date);
@@ -707,7 +674,6 @@ class BookingController extends Controller
         $rawTotal = $roomTotal + $serviceTotal;
         $totalAmount = $rawTotal - $discountAmount;
 
-        // Trừ tiền đặt cọc nếu đã trả
         $depositAmount = floatval($booking->deposit_amount ?? 0);
         $isDepositPaid = intval($booking->is_deposit_paid ?? 0);
         $finalTotal = $isDepositPaid ? max(0, $totalAmount - $depositAmount) : $totalAmount;
@@ -725,18 +691,16 @@ class BookingController extends Controller
         ];
     }
 
-    public function removeService(Request $request, $bookingId)
+    public function removeService(Request $request, Booking $booking)
     {
         $validated = $request->validate([
             'service_id' => 'required|exists:services,id',
             'room_id'    => 'nullable|exists:rooms,id',
         ]);
 
-        $booking = Booking::with('rooms')->findOrFail($bookingId);
+        $booking->load('rooms');
 
-        // Nếu có room_id: chỉ xóa dịch vụ gắn với phòng đó
         if (!empty($validated['room_id'])) {
-            // Kiểm tra phòng có thuộc booking không
             if (!$booking->rooms->contains('id', $validated['room_id'])) {
                 return response()->json([
                     'message' => "Phòng ID {$validated['room_id']} không thuộc booking này."
@@ -749,7 +713,6 @@ class BookingController extends Controller
                 ->where('room_id', $validated['room_id'])
                 ->delete();
         } else {
-            // Xoá dịch vụ áp dụng chung cho booking (không theo phòng cụ thể)
             DB::table('booking_service')
                 ->where('booking_id', $booking->id)
                 ->where('service_id', $validated['service_id'])
@@ -757,7 +720,6 @@ class BookingController extends Controller
                 ->delete();
         }
 
-        // Tính lại tổng tiền sau khi xoá
         $booking->recalculateTotal();
 
         return response()->json([
@@ -765,8 +727,7 @@ class BookingController extends Controller
             'data' => $booking->load('services')
         ]);
     }
-
-    public function payDeposit(Request $request, $bookingId)
+    public function payDeposit(Request $request, Booking $booking)
     {
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0',
@@ -774,18 +735,14 @@ class BookingController extends Controller
             'transaction_code' => 'nullable|string|max:100'
         ]);
 
-        $booking = Booking::findOrFail($bookingId);
-
-        // ❌ Nếu đã thanh toán rồi thì không xử lý lại
         if ($booking->is_deposit_paid) {
             return response()->json(['message' => 'Đặt cọc đã được thanh toán trước đó.'], 422);
         }
 
         DB::beginTransaction();
         try {
-            // ✅ Ghi log thanh toán
             Payment::create([
-                'invoice_id'       => null, // vì chưa có hóa đơn
+                'invoice_id'       => null,
                 'booking_id'       => $booking->id,
                 'amount'           => $validated['amount'],
                 'method'           => $validated['method'],
@@ -796,7 +753,6 @@ class BookingController extends Controller
                 'updated_at'       => now(),
             ]);
 
-            // ✅ Cập nhật booking
             $booking->update([
                 'deposit_amount'   => $validated['amount'],
                 'is_deposit_paid'  => true,

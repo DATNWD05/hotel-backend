@@ -19,7 +19,7 @@ class UserController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(User::class, 'users');
+        $this->authorizeResource(User::class, 'user');
     }
     public function index(Request $request)
     {
@@ -117,16 +117,8 @@ class UserController extends Controller
     }
 
 
-    public function show(string $id)
+    public function show(User $user)
     {
-        $user = User::find($id);
-
-        if (!$user) {
-            return response()->json([
-                'message' => 'Không tìm thấy người dùng'
-            ], 404);
-        }
-
         return response()->json([
             'data' => $user
         ], 200);
@@ -143,16 +135,8 @@ class UserController extends Controller
     }
 
 
-    public function update(Request $request, string $id)
+    public function update(Request $request, User $user)
     {
-        $user = User::find($id);
-
-        if (!$user) {
-            return response()->json([
-                'message' => 'Không tìm thấy người dùng'
-            ], 404);
-        }
-
         $validated = $request->validate([
             'name' => 'sometimes|string|max:100',
             'email' => [
@@ -162,10 +146,10 @@ class UserController extends Controller
             ],
             'password' => 'nullable|min:6',
             'role_id' => 'sometimes|exists:roles,id',
-            'status' => 'sometimes|in:active,not_active', // ✅ Cho phép cập nhật status
+            'status' => 'sometimes|in:active,not_active',
         ]);
 
-        $data = $request->only(['name', 'email', 'role_id', 'status']); // ✅ Thêm status
+        $data = $request->only(['name', 'email', 'role_id', 'status']);
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
@@ -179,17 +163,8 @@ class UserController extends Controller
         ], 200);
     }
 
-
-    public function destroy(string $id)
+    public function destroy(User $user)
     {
-        $user = User::find($id);
-
-        if (!$user) {
-            return response()->json([
-                'message' => 'Không tìm thấy người dùng'
-            ], 404);
-        }
-
         $user->delete();
 
         return response()->json([

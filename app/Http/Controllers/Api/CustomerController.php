@@ -17,7 +17,6 @@ class CustomerController extends Controller
     {
         $this->authorizeResource(Customer::class, 'customer');
     }
-
     public function index()
     {
         $data = Customer::paginate(10);
@@ -70,7 +69,6 @@ class CustomerController extends Controller
 
         return response()->json($customerData);
     }
-
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -133,6 +131,7 @@ class CustomerController extends Controller
         return response()->json($customer);
     }
 
+    // Kiểm tra tồn tại theo CCCD
     public function checkCccd($cccd)
     {
         $customer = Customer::where('cccd', $cccd)->first();
@@ -141,7 +140,7 @@ class CustomerController extends Controller
             return response()->json([
                 'status' => 'exists',
                 'data' => $customer
-            ], 200);
+            ]);
         }
 
         return response()->json([

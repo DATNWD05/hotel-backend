@@ -33,7 +33,13 @@ class DepartmentController extends Controller
         ]);
     }
 
-
+    public function show(Department $department)
+    {
+        return response()->json([
+            'status' => 'success',
+            'data'   => $department->load('manager'),
+        ]);
+    }
 
     public function store(StoreDepartmentRequest $request)
     {
