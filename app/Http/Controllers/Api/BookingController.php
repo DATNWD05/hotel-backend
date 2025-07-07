@@ -375,7 +375,7 @@ class BookingController extends Controller
         // Tính lại tổng
         $booking->raw_total = $rawTotal;
         $booking->discount_amount = $discount;
-        $booking->total_amount = max(0, $rawTotal - $discount);
+        $booking->total_amount = null;
         $booking->save();
 
         return response()->json([
