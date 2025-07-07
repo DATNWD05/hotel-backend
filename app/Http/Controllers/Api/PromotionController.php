@@ -17,7 +17,7 @@ class PromotionController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Promotion::class, 'promotions');
+        $this->authorizeResource(Promotion::class, 'promotion');
     }
     public function index(): JsonResponse
     {

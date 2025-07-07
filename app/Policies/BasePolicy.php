@@ -64,13 +64,12 @@ class BasePolicy
         $model = strtolower(str_replace('Policy', '', class_basename(static::class)));
         $permission = "{$action}_{$model}s";
 
-        return $user->role
+        $hasPermission = $user->role
             && $user->role->permissions
             && $user->role->permissions->contains('name', $permission);
 
         if (!$hasPermission) {
-            // Nếu request là Web
-            if (request()->expectsJson() === false) {
+            if (!request()->expectsJson()) {
                 session()->flash('error', 'Bạn không có quyền truy cập chức năng này.');
             }
         }

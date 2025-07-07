@@ -33,16 +33,12 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show(Customer $customer)
     {
-        $customer = Customer::with([
+        $customer->load([
             'bookings.rooms.roomType.amenities',
             'bookings.services'
-        ])->find($id);
-
-        if (!$customer) {
-            return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
-        }
+        ]);
 
         $bookingHistory = $customer->bookings->map(function ($booking) {
             return [
@@ -68,15 +64,11 @@ class CustomerController extends Controller
             ];
         });
 
-        // Gộp thông tin khách hàng và lịch sử đặt phòng
-        $customerData = $customer->toArray(); // lấy toàn bộ thông tin khách hàng gốc
-        $customerData['booking_history'] = $bookingHistory; // thêm trường lịch sử
+        $customerData = $customer->toArray();
+        $customerData['booking_history'] = $bookingHistory;
 
         return response()->json($customerData);
     }
-
-
-
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -108,13 +100,8 @@ class CustomerController extends Controller
         return response()->json($customer, 201);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, Customer $customer)
     {
-        $customer = Customer::find($id);
-        if (!$customer) {
-            return response()->json(['message' => 'Không tìm thấy khách hàng'], 404);
-        }
-
         $data = $request->validate([
             'cccd' => [
                 'required',
@@ -144,6 +131,7 @@ class CustomerController extends Controller
         return response()->json($customer);
     }
 
+    // Kiểm tra tồn tại theo CCCD
     public function checkCccd($cccd)
     {
         $customer = Customer::where('cccd', $cccd)->first();
@@ -152,7 +140,7 @@ class CustomerController extends Controller
             return response()->json([
                 'status' => 'exists',
                 'data' => $customer
-            ], 200);
+            ]);
         }
 
         return response()->json([

@@ -18,7 +18,7 @@ class InvoiceController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Invoice::class, 'invoices');
+        $this->authorizeResource(Invoice::class, 'invoice');
     }
 
     // [2] API: Xem danh sách hóa đơn
@@ -32,7 +32,6 @@ class InvoiceController extends Controller
     {
         // lấy theo booking_id
         $invoice = Invoice::with('booking')->where("booking_id", "=", $id)->first();
-
 
         if (!$invoice) {
             return response()->json([
@@ -67,7 +66,6 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Không tìm thấy thông tin khách hàng.'], 404);
         }
 
-        // Tính số đêm chính xác
         $checkIn = Carbon::parse($invoice->booking->check_in_date);
         $checkOut = Carbon::parse($invoice->booking->check_out_date);
 
@@ -79,7 +77,6 @@ class InvoiceController extends Controller
             ], 422);
         }
 
-        // Tính tiền phòng và set lại quan hệ rooms
         $roomsWithTotals = $invoice->booking->rooms->map(function ($room) use ($nights) {
             $roomRate = $room->roomType->base_rate ?? 0;
             $room->nights = $nights;
@@ -89,7 +86,6 @@ class InvoiceController extends Controller
 
         $invoice->booking->setRelation('rooms', $roomsWithTotals);
 
-        // Format ngày để hiển thị
         $invoice->formatted_checkin = $invoice->booking->check_in_date
             ? Carbon::parse($invoice->booking->check_in_date)->format('d/m/Y') : null;
 
@@ -99,13 +95,11 @@ class InvoiceController extends Controller
         $invoice->formatted_issued = $invoice->issued_date
             ? Carbon::parse($invoice->issued_date)->format('d/m/Y') : null;
 
-        // Tạo thư mục nếu chưa có
         $directory = storage_path('app/public/invoices');
         if (!File::exists($directory)) {
             File::makeDirectory($directory, 0755, true);
         }
 
-        // Tạo file PDF
         $fileName = 'invoice_' . $invoice->id . '.pdf';
         $filePath = $directory . '/' . $fileName;
 
@@ -115,16 +109,17 @@ class InvoiceController extends Controller
         ]);
         $pdf->save($filePath);
 
-        // Gửi email nếu có
         $email = $invoice->booking->customer->email ?? null;
         if ($email) {
-            Mail::to($email)->send(new InvoiceMail($invoice, $filePath));
+            try {
+                Mail::to($email)->send(new InvoiceMail($invoice, $filePath));
+            } catch (\Exception $e) {
+                Log::error('Lỗi gửi mail: ' . $e->getMessage());
+            }
         }
 
-        // In hóa đơn
         $this->printToPrinter($filePath);
 
-        // Trả link PDF
         $pdfUrl = asset('storage/invoices/' . $fileName);
 
         return response()->json([
@@ -135,7 +130,6 @@ class InvoiceController extends Controller
         ]);
     }
 
-    // Hàm phụ dùng để in hóa đơn PDF
     private function printToPrinter($filePath)
     {
         if (!file_exists($filePath)) {
@@ -144,13 +138,11 @@ class InvoiceController extends Controller
         }
 
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            // In bằng lệnh rundll32 (mở PDF bằng mặc định rồi in)
             $escapedPath = str_replace('/', '\\', $filePath);
-
-            // Mở bằng phần mềm mặc định để in (Adobe Reader, Chrome, ...)
             $command = "start /min \"\" \"" . $escapedPath . "\"";
-
             pclose(popen("start /B cmd /C \"$command\"", "r"));
+        } elseif (PHP_OS === 'Linux') {
+            exec("lp " . escapeshellarg($filePath));
         }
     }
 }

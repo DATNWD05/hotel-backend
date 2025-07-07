@@ -34,6 +34,7 @@ class PermissionsTableSeeder extends Seeder
             'delete_room_types',
             'sync_amenities_room_types',
             'view_rooms',
+            'view_booking_detail',
             'create_rooms',
             'edit_rooms',
             'delete_rooms',

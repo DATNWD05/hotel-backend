@@ -75,12 +75,18 @@ class RoleController extends Controller
     {
         $this->authorize('view', $role);
 
+        // Nếu là owner thì tự động gán toàn bộ quyền 
+        if (strtolower($role->name) === 'owner') {
+            $role->permissions()->sync(Permission::pluck('id')->toArray());
+        }
+
         return response()->json([
             'message' => 'Chi tiết vai trò',
             'role'    => $role->load('permissions'),
             'status'  => 200
         ]);
     }
+
 
     /**
      * Cập nhật thông tin và quyền của vai trò

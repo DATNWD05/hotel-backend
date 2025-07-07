@@ -22,20 +22,20 @@ use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\PromotionController;
 
 use App\Http\Controllers\Api\DepartmentController;
-use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\AmenityCategoryController;
-
 use App\Http\Controllers\Api\ServiceCategoryController;
+
 use App\Http\Controllers\Api\BookingPromotionController;
+use App\Http\Controllers\Api\PermissionController;
 
 Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
-    Route::get('/users/{id}', [UserController::class, 'show']);
-    Route::put('/users/{id}', [UserController::class, 'update']);
-    Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    Route::get('/users/{user}', [UserController::class, 'show']);
+    Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::delete('/users/{user}', [UserController::class, 'destroy']);
 
     Route::get('/me', [UserController::class, 'profile']);
 
@@ -53,8 +53,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/rooms/trashed', [RoomController::class, 'trashed']);
     Route::apiResource('rooms', RoomController::class);
     // Route::post('/rooms/{id}', [RoomController::class, 'update'])->name('rooms.update');
-    Route::post('/rooms/{id}/restore', [RoomController::class, 'restore']);
-    Route::delete('/rooms/{id}/force-delete', [RoomController::class, 'forceDelete']);
+    Route::post('/rooms/{room}/restore', [RoomController::class, 'restore']);
+    Route::delete('/rooms/{room}/force-delete', [RoomController::class, 'forceDelete']);
 
 
     // route về quản lí khuyến mãi
@@ -119,9 +119,9 @@ Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositRetur
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::get('/customers', [CustomerController::class, 'index']);
-    Route::get('/customers/{id}', [CustomerController::class, 'show']);
+    Route::get('/customers/{customer}', [CustomerController::class, 'show']);
     Route::post('/customers', [CustomerController::class, 'store']);
-    Route::put('/customers/{id}', [CustomerController::class, 'update']);
+    Route::put('/customers/{customer}', [CustomerController::class, 'update']);
     Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
 });
 
@@ -135,20 +135,20 @@ Route::post('/reset-password', [AuthController::class, 'reset']);
 Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
     Route::post('/bookings', [BookingController::class, 'store']);
-    Route::get('/bookings/{id}', [BookingController::class, 'show']);
-    Route::put('/bookings/{id}', [BookingController::class, 'update']);
-    Route::post('/bookings/{id}/add-services', [BookingController::class, 'addServices']);
-    Route::post('/bookings/{id}/deposit', [BookingController::class, 'payDeposit']);
+    Route::get('/bookings/{booking}', [BookingController::class, 'show']);
+    Route::put('/bookings/{booking}', [BookingController::class, 'update']);
+    Route::post('/bookings/{booking}/add-services', [BookingController::class, 'addServices']);
+    Route::post('/bookings/{booking}/deposit', [BookingController::class, 'payDeposit']);
 
 
     // xử lí trạng thái bookings
-    Route::get('/check-in/{id}', [BookingController::class, 'showCheckInInfo']);
-    Route::post('/check-in/{id}', [BookingController::class, 'checkIn']);
-    Route::get('/check-out/{id}', [BookingController::class, 'checkOut']);
-    Route::post('/pay-cash/{id}', [BookingController::class, 'payByCash']);
-    Route::post('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
+    Route::get('/check-in/{booking}', [BookingController::class, 'showCheckInInfo']);
+    Route::post('/check-in/{booking}', [BookingController::class, 'checkIn']);
+    Route::get('/check-out/{booking}', [BookingController::class, 'checkOut']);
+    Route::post('/pay-cash/{booking}', [BookingController::class, 'payByCash']);
+    Route::post('/bookings/{booking}/cancel', [BookingController::class, 'cancel']);
 
-    Route::post('/bookings/{id}/remove-service', [BookingController::class, 'removeService']);
+    Route::post('/bookings/{booking}/remove-service', [BookingController::class, 'removeService']);
 
     // Hóa đơn
     Route::prefix('invoices')->group(function () {

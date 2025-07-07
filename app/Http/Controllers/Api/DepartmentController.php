@@ -15,7 +15,7 @@ class DepartmentController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Department::class, 'departments');
+        $this->authorizeResource(Department::class, 'department');
     }
     public function index()
     {
@@ -33,7 +33,13 @@ class DepartmentController extends Controller
         ]);
     }
 
-
+    public function show(Department $department)
+    {
+        return response()->json([
+            'status' => 'success',
+            'data'   => $department->load('manager'),
+        ]);
+    }
 
     public function store(StoreDepartmentRequest $request)
     {
