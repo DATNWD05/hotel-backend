@@ -35,6 +35,7 @@ use App\Policies\CustomerPolicy;
 class AuthServiceProvider extends ServiceProvider
 {
     protected $policies = [
+        Amenity::class => AmenityPolicy::class,
         Role::class => RolePolicy::class,
         User::class => UserPolicy::class,
         Booking::class => BookingPolicy::class,

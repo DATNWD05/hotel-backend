@@ -93,12 +93,6 @@ class PermissionsTableSeeder extends Seeder
             'create_customers',
             'edit_customers',
             'check_cccd_customers',
-            'view_user_detail',
-            'view_customer_detail',
-            'view_employee_detail',
-            'view_service_detail',
-            'view_role_detail',
-            'view_invoice_detail',
         ];
 
         foreach ($permissions as $name) {
