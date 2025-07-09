@@ -1,33 +1,40 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-
-use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\RoomController;
-use App\Http\Controllers\Api\UserController;
-
-use App\Http\Controllers\Api\VNPayController;
+use App\Http\Controllers\Api\AmenityCategoryController;
 use App\Http\Controllers\Api\AmenityController;
+
+use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 
-use App\Http\Controllers\Api\InvoiceController;
-
-use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\BookingPromotionController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DepartmentController;
 
 use App\Http\Controllers\Api\EmployeeController;
 
-use App\Http\Controllers\Api\RoomTypeController;
-use App\Http\Controllers\Api\PromotionController;
+use App\Http\Controllers\Api\FaceCheckInController;
+use App\Http\Controllers\Api\InvoiceController;
 
-use App\Http\Controllers\Api\DepartmentController;
-use App\Http\Controllers\Api\StatisticsController;
-use App\Http\Controllers\Api\AmenityCategoryController;
+use App\Http\Controllers\Api\PermissionController;
+
+use App\Http\Controllers\Api\PromotionController;
+use App\Http\Controllers\Api\RoleController;
+
+use App\Http\Controllers\Api\RoomController;
+use App\Http\Controllers\Api\RoomTypeController;
+use App\Http\Controllers\Api\SalaryApiController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 
-use App\Http\Controllers\Api\BookingPromotionController;
-use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\StatisticsController;
+
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\VNPayController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+
 
 Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -176,3 +183,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Lấy danh sách quyền
     Route::get('/permissions', [PermissionController::class, 'index']);
 });
+
+// Routes cho châm công và lương
+Route::post('/face-check-in', [FaceCheckInController::class, 'faceCheckIn']);
+
+Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+
+Route::post('/employees/{id}/upload-faces', [EmployeeController::class, 'uploadFaces']);
+
+Route::post('/salaries/calculate', [SalaryApiController::class, 'calculateMonthlySalary']);
