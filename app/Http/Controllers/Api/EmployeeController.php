@@ -99,13 +99,11 @@ class EmployeeController extends Controller
         }
     }
 
-    public function uploadFaces(Request $request, $id)
+    public function uploadFaces(Request $request, Employee $employee)
     {
         $request->validate([
             'images.*' => 'required|image|max:2048',
         ]);
-
-        $employee = Employee::findOrFail($id);
 
         foreach ($request->file('images') as $image) {
             $path = $image->store('faces', 'public');

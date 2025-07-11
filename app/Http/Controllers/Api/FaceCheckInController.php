@@ -9,29 +9,12 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use App\Models\Attendance;
 use App\Models\EmployeeFace;
+use App\Models\Shift;
+use App\Models\WorkAssignment;
 use Carbon\Carbon;
 
 class FaceCheckInController extends Controller
 {
-    private function getShiftIdFromTime($now)
-    {
-        $shifts = \App\Models\Shift::all();
-
-        foreach ($shifts as $shift) {
-            $start = Carbon::createFromTimeString($shift->start_time);
-            $end = Carbon::createFromTimeString($shift->end_time);
-            $current = Carbon::createFromFormat('H:i:s', $now->format('H:i:s'));
-
-            if ($end->lessThan($start)) $end->addDay(); // ca đêm
-
-            if ($current->between($start, $end)) {
-                return $shift->id;
-            }
-        }
-
-        return null;
-    }
-
     public function faceCheckIn(Request $request)
     {
         $request->validate(['image' => 'required|string']);
@@ -40,6 +23,7 @@ class FaceCheckInController extends Controller
         $base64Image = str_replace(' ', '+', $base64Image);
         Storage::put("debug_camera.jpg", base64_decode($base64Image));
 
+        // ⚠️ Gửi tới API Face++ (BỎ QUA SSL)
         $detectResponse = Http::withoutVerifying()->asForm()->post('https://api-us.faceplusplus.com/facepp/v3/detect', [
             'api_key' => env('FACEPP_KEY'),
             'api_secret' => env('FACEPP_SECRET'),
@@ -49,17 +33,17 @@ class FaceCheckInController extends Controller
         if (!$detectResponse->successful() || count($detectResponse['faces'] ?? []) === 0) {
             return response()->json([
                 'success' => false,
-                'message' => 'Không phát hiện được khuôn mặt. Vui lòng chụp chính diện, đủ sáng.',
+                'message' => '❌ Không phát hiện được khuôn mặt. Vui lòng chụp chính diện, đủ sáng.',
             ]);
         }
 
         $faces = EmployeeFace::with('employee')->get();
-
         foreach ($faces as $face) {
             if (!Storage::disk('public')->exists($face->image_path)) continue;
 
             $faceBase64 = base64_encode(Storage::disk('public')->get($face->image_path));
 
+            // ⚠️ Gửi so sánh Face++ (BỎ QUA SSL)
             $compareResponse = Http::withoutVerifying()->asForm()->post('https://api-us.faceplusplus.com/facepp/v3/compare', [
                 'api_key' => env('FACEPP_KEY'),
                 'api_secret' => env('FACEPP_SECRET'),
@@ -72,59 +56,84 @@ class FaceCheckInController extends Controller
                 $now = now();
                 $today = $now->toDateString();
 
-                $attendance = Attendance::with('shift')->where('employee_id', $employee->id)
+                $assignment = WorkAssignment::where('employee_id', $employee->id)
+                    ->where('work_date', $today)
+                    ->first();
+
+                if (!$assignment) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => '⛔ Bạn không được phân công làm việc hôm nay.',
+                    ]);
+                }
+
+                $shift = Shift::find($assignment->shift_id);
+                $shiftStart = Carbon::createFromTimeString($shift->start_time);
+                $shiftEnd = Carbon::createFromTimeString($shift->end_time);
+                if ($shiftEnd->lessThan($shiftStart)) $shiftEnd->addDay();
+
+                $earlyWindow = $shiftStart->copy()->subMinutes(15);
+                $lateWindow = $shiftEnd->copy();
+
+                $attendance = Attendance::where('employee_id', $employee->id)
                     ->where('work_date', $today)
                     ->first();
 
                 if ($attendance) {
-                    // Nếu đã check-out
                     if ($attendance->check_out) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Bạn đã chấm công ra hôm nay rồi.',
+                            'message' => '✅ Bạn đã chấm công ra hôm nay rồi.',
                         ]);
                     }
 
-                    // Tính giờ làm chính xác
                     $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in);
                     $checkOut = $now;
 
-                    $shift = $attendance->shift;
-                    $shiftStart = Carbon::createFromTimeString($shift->start_time);
-                    $shiftEnd = Carbon::createFromTimeString($shift->end_time);
-                    if ($shiftEnd->lessThan($shiftStart)) $shiftEnd->addDay(); // ca đêm
+                    $totalShiftMinutes = $shiftStart->diffInMinutes($shiftEnd);
+                    $minCheckOutTime = $checkIn->copy()->addMinutes($totalShiftMinutes * 0.8);
+                    if ($checkOut->lt($minCheckOutTime)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => '⛔ Chưa đủ 80% thời gian ca để chấm công ra.',
+                        ]);
+                    }
 
-                    // Giới hạn thời gian trong ca
-                    if ($checkIn->lessThan($shiftStart)) $checkIn = $shiftStart;
-                    if ($checkOut->greaterThan($shiftEnd)) $checkOut = $shiftEnd;
+                    if ($checkOut->gt($shiftEnd)) $checkOut = $shiftEnd;
 
                     $workedMinutes = $checkIn->diffInMinutes($checkOut);
                     $workedHours = round($workedMinutes / 60, 2);
 
+                    $earlyLeave = $shiftEnd->diffInMinutes($checkOut, false);
+                    $earlyLeaveMinutes = $earlyLeave > 0 ? 0 : abs($earlyLeave);
+
                     $attendance->update([
                         'check_out' => $now->toTimeString(),
                         'worked_hours' => $workedHours,
+                        'early_leave_minutes' => $earlyLeaveMinutes,
                     ]);
 
                     return response()->json([
                         'success' => true,
-                        'message' => "✅ Chấm công ra thành công cho {$employee->name}. Tổng giờ làm: {$workedHours}h",
+                        'message' => "✅ Chấm công ra thành công cho {$employee->name}. Giờ làm: {$workedHours}h",
                     ]);
                 } else {
-                    // Chấm công vào
-                    $shiftId = $this->getShiftIdFromTime($now);
-                    if (!$shiftId) {
+                    // Check-in
+                    if (!$now->between($earlyWindow, $lateWindow)) {
                         return response()->json([
                             'success' => false,
-                            'message' => '⛔ Không xác định được ca làm việc từ thời gian hiện tại.',
+                            'message' => '⛔ Không nằm trong thời gian hợp lệ để chấm công vào.',
                         ]);
                     }
 
+                    $lateMinutes = $now->gt($shiftStart) ? $shiftStart->diffInMinutes($now) : 0;
+
                     Attendance::create([
                         'employee_id' => $employee->id,
-                        'shift_id' => $shiftId,
+                        'shift_id' => $shift->id,
                         'work_date' => $today,
                         'check_in' => $now->toTimeString(),
+                        'late_minutes' => $lateMinutes,
                     ]);
 
                     return response()->json([
@@ -137,7 +146,7 @@ class FaceCheckInController extends Controller
 
         return response()->json([
             'success' => false,
-            'message' => 'Không nhận diện được khuôn mặt. Hãy thử lại với góc mặt rõ hơn.',
+            'message' => '⛔ Không nhận diện được khuôn mặt. Hãy thử lại với góc mặt rõ hơn.',
         ]);
     }
 }

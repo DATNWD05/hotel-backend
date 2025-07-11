@@ -53,7 +53,7 @@ class Employee extends Model
     }
 
     public function faces()
-{
-    return $this->hasMany(EmployeeFace::class);
-}
+    {
+        return $this->hasMany(EmployeeFace::class);
+    }
 }
