@@ -13,7 +13,6 @@ use App\Http\Controllers\Api\DepartmentController;
 
 use App\Http\Controllers\Api\EmployeeController;
 
-use App\Http\Controllers\Api\FaceCheckInController;
 use App\Http\Controllers\Api\InvoiceController;
 
 use App\Http\Controllers\Api\PermissionController;
@@ -23,7 +22,6 @@ use App\Http\Controllers\Api\RoleController;
 
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\RoomTypeController;
-use App\Http\Controllers\Api\SalaryApiController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 
 use App\Http\Controllers\Api\ServiceController;
@@ -187,14 +185,14 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes cho châm công và lương
-Route::post('/face-check-in', [FaceCheckInController::class, 'faceCheckIn']);
+Route::get('/attendances', [AttendanceController::class, 'index']);
+Route::post('/faceAttendance', [AttendanceController::class, 'faceAttendance']);
+// Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+// Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
 
-Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
-Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
-
+// Thêm danh tính
 Route::post('/employees/{employee}/upload-faces', [EmployeeController::class, 'uploadFaces']);
 
-Route::post('/salaries/calculate', [SalaryApiController::class, 'calculateMonthlySalary']);
 
 // Routes cho quản lý ca làm việc
 Route::prefix('work-assignments')->group(function () {
