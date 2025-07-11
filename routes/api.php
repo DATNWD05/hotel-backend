@@ -32,8 +32,6 @@ use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VNPayController;
 use App\Http\Controllers\Api\WorkAssignmentController;
-use App\Http\Controllers\Api\WorkAssignmentImportController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 
@@ -204,8 +202,5 @@ Route::prefix('work-assignments')->group(function () {
     Route::post('/', [WorkAssignmentController::class, 'store']);
     Route::put('/{workAssignment}', [WorkAssignmentController::class, 'update']);
     Route::delete('/{workAssignment}', [WorkAssignmentController::class, 'destroy']);
+    Route::post('/import', [WorkAssignmentController::class, 'import']);
 });
-
-Route::post('/import-work-assignments', [WorkAssignmentController::class, 'import']);
-
-

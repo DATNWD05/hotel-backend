@@ -3,39 +3,30 @@
 namespace App\Imports;
 
 use App\Models\WorkAssignment;
-use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Illuminate\Support\Facades\Validator;
+use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
-class WorkAssignmentImport implements ToCollection, WithHeadingRow
+class WorkAssignmentImport implements ToModel, WithHeadingRow
 {
-    public function collection(Collection $rows)
+    public function model(array $row)
     {
-        foreach ($rows as $index => $row) {
-            $validator = Validator::make($row->toArray(), [
-                'employee_id' => 'required|exists:employees,id',
-                'shift_id' => 'required|exists:shifts,id',
-                'work_date' => 'required|date',
-            ]);
-
-            if ($validator->fails()) {
-                // Có thể ghi log hoặc bỏ qua dòng lỗi
-                continue;
-            }
-
-            // Kiểm tra trùng lặp
-            $exists = WorkAssignment::where('employee_id', $row['employee_id'])
-                ->where('work_date', $row['work_date'])
-                ->first();
-
-            if (!$exists) {
-                WorkAssignment::create([
-                    'employee_id' => $row['employee_id'],
-                    'shift_id' => $row['shift_id'],
-                    'work_date' => $row['work_date'],
-                ]);
-            }
+        // Bỏ qua nếu thiếu thông tin
+        if (!$row['employee_id'] || !$row['shift_id'] || !$row['work_date']) {
+            return null;
         }
+
+        // Bỏ qua nếu đã có phân công ngày đó
+        if (WorkAssignment::where('employee_id', $row['employee_id'])
+            ->where('work_date', $row['work_date'])
+            ->exists()
+        ) {
+            return null;
+        }
+
+        return new WorkAssignment([
+            'employee_id' => $row['employee_id'],
+            'shift_id' => $row['shift_id'],
+            'work_date' => $row['work_date'],
+        ]);
     }
 }

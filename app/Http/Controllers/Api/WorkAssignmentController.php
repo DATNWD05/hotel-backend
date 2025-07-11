@@ -69,7 +69,7 @@ class WorkAssignmentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => ' Phân công thành công cho nhân viên ID: ' . $assignment->employee_id . ' vào ngày ' . $assignment->work_date,
+            'message' => 'Phân công thành công cho nhân viên ID: ' . $assignment->employee_id . ' vào ngày ' . $assignment->work_date,
             'data' => $assignment,
         ]);
     }
@@ -78,12 +78,12 @@ class WorkAssignmentController extends Controller
     public function update(Request $request, WorkAssignment $workAssignment)
     {
         $messages = [
-            'employee_id.required' => ' Vui lòng chọn nhân viên cần phân công.',
+            'employee_id.required' => 'Vui lòng chọn nhân viên cần phân công.',
             'employee_id.exists' => 'Nhân viên không tồn tại trong hệ thống.',
-            'shift_id.required' => ' Vui lòng chọn ca làm việc.',
-            'shift_id.exists' => ' Ca làm việc không tồn tại.',
-            'work_date.required' => ' Vui lòng chọn ngày làm việc.',
-            'work_date.date' => ' Ngày làm việc không hợp lệ. Vui lòng nhập đúng định dạng YYYY-MM-DD.',
+            'shift_id.required' => 'Vui lòng chọn ca làm việc.',
+            'shift_id.exists' => 'Ca làm việc không tồn tại.',
+            'work_date.required' => 'Vui lòng chọn ngày làm việc.',
+            'work_date.date' => 'Ngày làm việc không hợp lệ. Vui lòng nhập đúng định dạng YYYY-MM-DD.',
         ];
 
         $validator = Validator::make($request->all(), [
@@ -95,7 +95,7 @@ class WorkAssignmentController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => ' Dữ liệu không hợp lệ khi cập nhật phân công.',
+                'message' => 'Dữ liệu không hợp lệ khi cập nhật phân công.',
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -109,7 +109,7 @@ class WorkAssignmentController extends Controller
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => ' Nhân viên này đã có phân công khác trong ngày ' . $request->work_date . '.',
+                'message' => 'Nhân viên này đã có phân công khác trong ngày ' . $request->work_date . '.',
             ], 409);
         }
 
@@ -118,7 +118,7 @@ class WorkAssignmentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => ' Cập nhật phân công thành công.',
+            'message' => 'Cập nhật phân công thành công.',
             'data' => $workAssignment,
         ]);
     }
@@ -129,7 +129,7 @@ class WorkAssignmentController extends Controller
         if (!$workAssignment) {
             return response()->json([
                 'success' => false,
-                'message' => ' Không tìm thấy phân công cần xoá.',
+                'message' => 'Không tìm thấy phân công cần xoá.',
             ], 404);
         }
 
@@ -137,27 +137,29 @@ class WorkAssignmentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => ' Xoá phân công thành công.',
+            'message' => 'Xoá phân công thành công.',
         ]);
     }
 
     public function import(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls'
-        ]);
+        if (!$request->hasFile('file')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng chọn file Excel.'
+            ], 400);
+        }
 
         try {
             Excel::import(new WorkAssignmentImport, $request->file('file'));
-
             return response()->json([
                 'success' => true,
-                'message' => '📥 Import phân công thành công!'
+                'message' => 'Import phân công thành công!'
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => '❌ Lỗi khi import: ' . $e->getMessage()
+                'message' => 'Lỗi khi import: ' . $e->getMessage()
             ], 500);
         }
     }
