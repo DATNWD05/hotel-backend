@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Employee extends Model
 {
-    protected $fillable = ['MaNV', 'user_id', 'name', 'email', 'role_id', 'birthday', 'gender', 'phone', 'address', 'hire_date', 'department_id', 'status', 'cccd'];
+    protected $fillable = ['MaNV', 'user_id', 'name', 'email', 'role_id', 'birthday', 'gender', 'phone', 'address', 'hire_date', 'department_id', 'status', 'cccd', 'face_image'];
 
     public static function boot()
     {
@@ -41,6 +41,7 @@ class Employee extends Model
         return $this->belongsTo(User::class);
     }
 
+    // Các mối quan hệ với Attendance và Salary
     public function attendances()
     {
         return $this->hasMany(Attendance::class);
@@ -49,5 +50,10 @@ class Employee extends Model
     public function payrolls()
     {
         return $this->hasMany(Payroll::class);
+    }
+
+    public function faces()
+    {
+        return $this->hasMany(EmployeeFace::class);
     }
 }

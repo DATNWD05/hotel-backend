@@ -1,35 +1,45 @@
 <?php
 
-use App\Http\Controllers\Api\PayrollController;
-use App\Http\Controllers\Api\PayrollExportController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 
 use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\RoomController;
-use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\AmenityCategoryController;
 
-use App\Http\Controllers\Api\VNPayController;
+
 use App\Http\Controllers\Api\AmenityController;
+
+use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\BookingController;
 
-use App\Http\Controllers\Api\InvoiceController;
-
-use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\BookingPromotionController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DepartmentController;
 
 use App\Http\Controllers\Api\EmployeeController;
 
-use App\Http\Controllers\Api\RoomTypeController;
+use App\Http\Controllers\Api\InvoiceController;
+
+use App\Http\Controllers\Api\PermissionController;
+
 use App\Http\Controllers\Api\PromotionController;
 
-use App\Http\Controllers\Api\DepartmentController;
-use App\Http\Controllers\Api\StatisticsController;
-use App\Http\Controllers\Api\AmenityCategoryController;
+use App\Http\Controllers\Api\RoomController;
+use App\Http\Controllers\Api\RoomTypeController;
 use App\Http\Controllers\Api\ServiceCategoryController;
 
-use App\Http\Controllers\Api\BookingPromotionController;
-use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\StatisticsController;
+
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\VNPayController;
+use App\Http\Controllers\Api\WorkAssignmentController;
+
+use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayrollExportController;
+
+
+
 
 Route::middleware('auth:sanctum')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
@@ -185,4 +195,23 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Lấy danh sách quyền
     Route::get('/permissions', [PermissionController::class, 'index']);
+});
+
+// Routes cho châm công và lương
+Route::get('/attendances', [AttendanceController::class, 'index']);
+Route::post('/faceAttendance', [AttendanceController::class, 'faceAttendance']);
+// Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
+// Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
+
+// Thêm danh tính
+Route::post('/employees/{employee}/upload-faces', [EmployeeController::class, 'uploadFaces']);
+
+
+// Routes cho quản lý ca làm việc
+Route::prefix('work-assignments')->group(function () {
+    Route::get('/', [WorkAssignmentController::class, 'index']);
+    Route::post('/', [WorkAssignmentController::class, 'store']);
+    Route::put('/{workAssignment}', [WorkAssignmentController::class, 'update']);
+    Route::delete('/{workAssignment}', [WorkAssignmentController::class, 'destroy']);
+    Route::post('/import', [WorkAssignmentController::class, 'import']);
 });

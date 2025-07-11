@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Employee;
-use App\Models\Department;
-use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employees\StoreEmployeeRequest;
 use App\Http\Requests\Employees\UpdateEmployeeRequest;
+use App\Models\Department;
+use App\Models\Employee;
+use App\Models\EmployeeFace;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class EmployeeController extends Controller
 {
@@ -95,5 +97,22 @@ class EmployeeController extends Controller
                 'message' => 'Lỗi hệ thống.',
             ], 500);
         }
+    }
+
+    public function uploadFaces(Request $request, Employee $employee)
+    {
+        $request->validate([
+            'images.*' => 'required|image|max:2048',
+        ]);
+
+        foreach ($request->file('images') as $image) {
+            $path = $image->store('faces', 'public');
+            EmployeeFace::create([
+                'employee_id' => $employee->id,
+                'image_path' => $path,
+            ]);
+        }
+
+        return response()->json(['message' => 'Upload khuôn mặt thành công']);
     }
 }
