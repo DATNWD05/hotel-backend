@@ -7,5 +7,9 @@ Route::get('/', function () {
 });
 
 Route::get('/face-check-in', function () {
-    return view('face_checkin');
+    return view('facecheckin.face_checkin');
+});
+
+Route::get('/upload-faces', function () {
+    return view('employees.upload-face');
 });

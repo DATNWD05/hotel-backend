@@ -2,43 +2,47 @@
 <html lang="vi">
 
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Chấm Công Bằng Khuôn Mặt</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            background: #f0f2f5;
-            text-align: center;
+        #video,
+        #canvas {
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        video,
-        canvas {
-            border: 2px solid #444;
-            border-radius: 10px;
-            margin-bottom: 10px;
+        .status-success {
+            color: #10b981;
         }
 
-        #status {
-            margin-top: 10px;
-            font-weight: bold;
-            font-size: 16px;
+        .status-error {
+            color: #ef4444;
+        }
+
+        .status-processing {
+            color: #1f2937;
         }
     </style>
 </head>
 
-<body>
-    <h2>🧑‍💼 Chấm Công Bằng Khuôn Mặt</h2>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="max-w-3xl w-full bg-white p-8 rounded-lg shadow-lg">
+        <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">🧑‍💼 Chấm Công Bằng Khuôn Mặt</h2>
 
-    <video id="video" width="640" height="480" autoplay muted playsinline></video>
-    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
-    <div id="status">🔄 Đang mở camera...</div>
+        <div class="flex justify-center mb-4">
+            <video id="video" width="640" height="480" autoplay muted playsinline class="max-w-full h-auto"></video>
+        </div>
+        <canvas id="canvas" width="640" height="480" class="hidden"></canvas>
+        <div id="status" class="text-center text-lg font-semibold mt-4">🔄 Đang mở camera...</div>
 
-    <!-- Âm thanh phản hồi -->
-    <audio id="checkinSuccess" src="/sounds/checkin-success.mp3"></audio>
-    <audio id="checkoutSuccess" src="/sounds/checkout-success.mp3"></audio>
-    <audio id="failSound" src="/sounds/fail.mp3"></audio>
+        <!-- Âm thanh phản hồi -->
+        <audio id="checkinSuccess" src="/sounds/checkin-success.mp3" preload="auto"></audio>
+        <audio id="checkoutSuccess" src="/sounds/checkout-success.mp3" preload="auto"></audio>
+        <audio id="failSound" src="/sounds/fail.mp3" preload="auto"></audio>
+    </div>
 
     <script>
         const video = document.getElementById("video");
@@ -57,17 +61,18 @@
                     },
                     height: {
                         ideal: 480
-                    },
+                    }
                 }
             })
             .then((stream) => {
                 video.srcObject = stream;
                 statusDiv.innerText = "📸 Camera đã sẵn sàng. Đang kiểm tra...";
+                statusDiv.classList.add('status-processing');
                 startAutoCheck();
             })
             .catch((err) => {
                 statusDiv.innerText = "❌ Không thể truy cập camera.";
-                statusDiv.style.color = "red";
+                statusDiv.classList.add('status-error');
                 console.error("Camera error:", err);
             });
 
@@ -80,25 +85,26 @@
                 const imageData = canvas.toDataURL("image/jpeg");
 
                 statusDiv.innerText = "⏳ Đang kiểm tra khuôn mặt...";
-                statusDiv.style.color = "#444";
+                statusDiv.classList.remove('status-success', 'status-error');
+                statusDiv.classList.add('status-processing');
 
                 fetch("/api/faceAttendance", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
-                            "X-CSRF-TOKEN": csrfToken,
+                            "X-CSRF-TOKEN": csrfToken
                         },
                         body: JSON.stringify({
                             image: imageData
-                        }),
+                        })
                     })
                     .then((res) => res.json())
                     .then((data) => {
                         if (data.success) {
                             statusDiv.innerText = "✅ " + data.message;
-                            statusDiv.style.color = "green";
+                            statusDiv.classList.remove('status-processing', 'status-error');
+                            statusDiv.classList.add('status-success');
 
-                            // 🎵 Phát âm thanh phù hợp
                             if (data.message.includes("vào")) {
                                 document.getElementById("checkinSuccess").play();
                             } else if (data.message.includes("ra")) {
@@ -108,27 +114,24 @@
                             clearInterval(interval);
                             setTimeout(() => {
                                 statusDiv.innerText = "🔄 Sẵn sàng nhận diện người tiếp theo...";
-                                statusDiv.style.color = "#444";
+                                statusDiv.classList.remove('status-success', 'status-error');
+                                statusDiv.classList.add('status-processing');
                                 isChecking = false;
                                 startAutoCheck();
                             }, 5000);
                         } else {
                             statusDiv.innerText = "❌ " + data.message;
-                            statusDiv.style.color = "red";
-
-                            // 🎵 Phát âm thanh lỗi
+                            statusDiv.classList.remove('status-processing', 'status-success');
+                            statusDiv.classList.add('status-error');
                             document.getElementById("failSound").play();
-
                             isChecking = false;
                         }
                     })
                     .catch((err) => {
                         statusDiv.innerText = "❌ Lỗi kết nối server.";
-                        statusDiv.style.color = "red";
-
-                        // 🎵 Phát âm thanh lỗi
+                        statusDiv.classList.remove('status-processing', 'status-success');
+                        statusDiv.classList.add('status-error');
                         document.getElementById("failSound").play();
-
                         isChecking = false;
                         console.error("Fetch error:", err);
                     });
