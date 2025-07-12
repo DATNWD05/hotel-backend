@@ -82,7 +82,7 @@
                 statusDiv.innerText = "⏳ Đang kiểm tra khuôn mặt...";
                 statusDiv.style.color = "#444";
 
-                fetch("/api/face-check-in", {
+                fetch("/api/faceAttendance", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",

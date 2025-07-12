@@ -122,7 +122,7 @@ class AttendanceController extends Controller
                 'worked_hours' => $attendance->worked_hours,
                 'late_minutes' => $attendance->late_minutes,
                 'early_leave_minutes' => $attendance->early_leave_minutes,
-                'overtime_hours' => round(($attendance->overtime_minutes ?? 0) / 60, 2),
+                'overtime_hours' => $attendance->overtime_hours,
             ];
         });
 
@@ -235,9 +235,9 @@ class AttendanceController extends Controller
                         ]);
                     }
 
-                    // CHỈNH SỬA CHỖ NÀY: Chuyển đổi sang giờ
-                    $workedHours = round($workedMinutes / 60, 2);
-                    $overtimeHours = round($overtimeMinutes / 60, 2);
+                    // ✅ Làm tròn mỗi 30 phút = 0.5 giờ
+                    $workedHours = round($workedMinutes / 30) * 0.5;
+                    $overtimeHours = round($overtimeMinutes / 30) * 0.5;
 
                     $earlyLeave = $shiftEnd->diffInMinutes($checkOut, false);
                     $earlyLeaveMinutes = $earlyLeave > 0 ? 0 : abs($earlyLeave);
@@ -246,7 +246,7 @@ class AttendanceController extends Controller
                         'check_out' => $checkOut->toTimeString(),
                         'worked_hours' => $workedHours,
                         'early_leave_minutes' => $earlyLeaveMinutes,
-                        'overtime_minutes' => $overtimeHours,
+                        'overtime_hours' => $overtimeHours,
                     ]);
 
                     return response()->json([
