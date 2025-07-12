@@ -184,7 +184,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/permissions', [PermissionController::class, 'index']);
 });
 
-// Routes cho châm công và lương
+// Routes cho châm công
 Route::get('/attendances', [AttendanceController::class, 'index']);
 Route::post('/faceAttendance', [AttendanceController::class, 'faceAttendance']);
 // Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);

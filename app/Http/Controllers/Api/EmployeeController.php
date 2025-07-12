@@ -11,6 +11,8 @@ use App\Models\EmployeeFace;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class EmployeeController extends Controller
 {
@@ -41,12 +43,17 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::create($request->validated());
+
             return response()->json([
                 'status' => 'success',
-                'data' => $employee->load('department'),
+                'data' => [
+                    'employee' => $employee->load('department'),
+                    'employee_id' => $employee->id, // THÊM DÒNG NÀY
+                ],
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Lỗi hệ thống khi cập nhật nhân viên: ' . $e->getMessage());
+            Log::error('Lỗi hệ thống khi thêm nhân viên: ' . $e->getMessage());
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Lỗi hệ thống.',
@@ -99,20 +106,40 @@ class EmployeeController extends Controller
         }
     }
 
+    // Phương thức để upload ảnh khuôn mặt
     public function uploadFaces(Request $request, Employee $employee)
     {
         $request->validate([
-            'images.*' => 'required|image|max:2048',
+            'images' => 'required|array',
+            'images.*' => 'required|string' // base64 encoded strings
         ]);
 
-        foreach ($request->file('images') as $image) {
-            $path = $image->store('faces', 'public');
+        $saved = [];
+
+        foreach ($request->input('images') as $base64Image) {
+            // Làm sạch chuỗi base64 (xóa tiền tố và chuẩn hóa)
+            $base64Image = preg_replace('#^data:image/\w+;base64,#i', '', $base64Image);
+            $base64Image = str_replace(' ', '+', $base64Image);
+
+            // Tạo tên file ngẫu nhiên
+            $fileName = 'faces/' . Str::random(40) . '.jpg';
+
+            // Lưu file ảnh vào storage/public/faces
+            Storage::disk('public')->put($fileName, base64_decode($base64Image));
+
+            // Lưu đường dẫn ảnh vào DB
             EmployeeFace::create([
                 'employee_id' => $employee->id,
-                'image_path' => $path,
+                'image_path' => $fileName,
             ]);
+
+            $saved[] = $fileName;
         }
 
-        return response()->json(['message' => 'Upload khuôn mặt thành công']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Thu thập khuôn mặt từ camera thành công.',
+            'files' => $saved,
+        ]);
     }
 }
