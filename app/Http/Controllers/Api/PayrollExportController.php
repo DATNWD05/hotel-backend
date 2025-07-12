@@ -16,16 +16,19 @@ class PayrollExportController extends Controller
 {
     public function exportExcel()
     {
-        $month = request('month') ?? now()->format('m');
-        $year = request('year') ?? now()->format('Y');
+        // Xử lý tháng năm linh hoạt
+        $monthInput = request('month');
+        $yearInput = request('year');
 
-        $query = Payroll::with('employee');
-
-        if ($month && $year) {
-            $month = str_pad($month, 2, '0', STR_PAD_LEFT); // 7 => 07
-            $query->where('month', 'like', "{$year}-{$month}%");
+        if ($monthInput && str_contains($monthInput, '-')) {
+            $monthString = $monthInput; // VD: "2025-07"
+        } else {
+            $month = str_pad($monthInput ?? now()->format('m'), 2, '0', STR_PAD_LEFT);
+            $year = $yearInput ?? now()->format('Y');
+            $monthString = "$year-$month";
         }
 
+        $query = Payroll::with('employee')->where('month', 'like', "$monthString%");
 
         $payrolls = $query->get();
 
@@ -37,10 +40,7 @@ class PayrollExportController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
 
         // === DÒNG TIÊU ĐỀ LỚN ===
-        $title = 'BẢNG LƯƠNG NHÂN VIÊN';
-        if ($month && $year) {
-            $title .= ' THÁNG ' . $month . ' NĂM ' . $year;
-        }
+        $title = 'BẢNG LƯƠNG NHÂN VIÊN THÁNG ' . substr($monthString, 5, 2) . ' NĂM ' . substr($monthString, 0, 4);
         $sheet->mergeCells('A1:I1');
         $sheet->setCellValue('A1', $title);
         $sheet->getStyle('A1')->applyFromArray([
@@ -52,12 +52,11 @@ class PayrollExportController extends Controller
         $headers = ['Mã NV', 'Tên nhân viên', 'Tháng', 'Tổng giờ', 'Số ngày công', 'Tổng lương', 'Thưởng', 'Phạt', 'Lương cuối'];
         $sheet->fromArray([$headers], null, 'A2');
 
-        $styleHeader = [
+        $sheet->getStyle('A2:I2')->applyFromArray([
             'font' => ['bold' => true],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-        ];
-        $sheet->getStyle('A2:I2')->applyFromArray($styleHeader);
+        ]);
 
         // === DỮ LIỆU ===
         $rows = $payrolls->map(function ($item) {
@@ -76,53 +75,48 @@ class PayrollExportController extends Controller
 
         $sheet->fromArray($rows->toArray(), null, 'A3');
 
-        // === AUTO WIDTH CỘT ===
         foreach (range('A', 'I') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
-        // === BORDER + ĐỊNH DẠNG TIỀN TỆ ===
-        $rowCount = $payrolls->count() + 2; // vì bắt đầu từ dòng 3
+        $rowCount = $payrolls->count() + 2;
         $sheet->getStyle("A3:I{$rowCount}")->applyFromArray([
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ]);
 
-        // Định dạng tiền cho cột: F, G, H, I
         foreach (['F', 'G', 'H', 'I'] as $col) {
             $sheet->getStyle("{$col}3:{$col}{$rowCount}")
-                ->getNumberFormat()
-                ->setFormatCode('#,##0" đ"');
+                ->getNumberFormat()->setFormatCode('#,##0" đ"');
             $sheet->getStyle("{$col}3:{$col}{$rowCount}")
-                ->getAlignment()
-                ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+                ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
 
-        // === EXPORT FILE ===
         $fileName = 'bang_luong_' . now()->format('Ymd_His') . '.xlsx';
         $writer = new Xlsx($spreadsheet);
 
-        $response = new StreamedResponse(function () use ($writer) {
+        return new StreamedResponse(function () use ($writer) {
             $writer->save('php://output');
-        });
-
-        $response->headers->set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        $response->headers->set('Content-Disposition', "attachment;filename=\"$fileName\"");
-        $response->headers->set('Cache-Control', 'max-age=0');
-
-        return $response;
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment;filename=\"$fileName\"",
+            'Cache-Control' => 'max-age=0',
+        ]);
     }
 
     public function exportPdf()
     {
-        $month = request('month') ?? now()->format('m');
-        $year = request('year') ?? now()->format('Y');
+        $monthInput = request('month');
+        $yearInput = request('year');
 
-        $query = Payroll::with('employee');
-
-        if ($month && $year) {
-            $month = str_pad($month, 2, '0', STR_PAD_LEFT); // 7 => 07
-            $query->where('month', 'like', "{$year}-{$month}%");
+        if ($monthInput && str_contains($monthInput, '-')) {
+            $monthString = $monthInput;
+        } else {
+            $month = str_pad($monthInput ?? now()->format('m'), 2, '0', STR_PAD_LEFT);
+            $year = $yearInput ?? now()->format('Y');
+            $monthString = "$year-$month";
         }
+
+        $query = Payroll::with('employee')->where('month', 'like', "$monthString%");
 
         $payrolls = $query->get();
 
@@ -132,10 +126,10 @@ class PayrollExportController extends Controller
 
         $pdf = Pdf::loadView('exports.payroll', [
             'payrolls' => $payrolls,
-            'month' => $month,
-            'year' => $year,
+            'month' => substr($monthString, 5, 2),
+            'year' => substr($monthString, 0, 4),
         ]);
 
-        return $pdf->download("bang_luong_{$month}_{$year}.pdf");
+        return $pdf->download("bang_luong_{$monthString}.pdf");
     }
 }
