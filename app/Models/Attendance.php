@@ -17,7 +17,6 @@ class Attendance extends Model
         'early_leave_minutes',
         'overtime_hours'
     ];
-
     public function employee()
     {
         return $this->belongsTo(Employee::class);
@@ -25,6 +24,6 @@ class Attendance extends Model
 
     public function shift()
     {
-        return $this->belongsTo(Shift::class);
+        return $this->belongsTo(Shift::class, 'shift_id');
     }
 }

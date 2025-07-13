@@ -1,10 +1,15 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\AmenityCategoryController;
+
+
 use App\Http\Controllers\Api\AmenityController;
 
 use App\Http\Controllers\Api\AttendanceController;
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 
 use App\Http\Controllers\Api\BookingPromotionController;
@@ -18,7 +23,6 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PermissionController;
 
 use App\Http\Controllers\Api\PromotionController;
-use App\Http\Controllers\Api\RoleController;
 
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\RoomTypeController;
@@ -30,8 +34,9 @@ use App\Http\Controllers\Api\StatisticsController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VNPayController;
 use App\Http\Controllers\Api\WorkAssignmentController;
-use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayrollExportController;
 
 
 
@@ -113,6 +118,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // 16. Trang thống kê tổng hợp
     Route::get('/statistics/summary-dashboard', [StatisticsController::class, 'summaryDashboard']);
+
+    Route::prefix('payrolls')->middleware('auth:sanctum')->group(function () {
+        Route::get('/export-pdf', [PayrollExportController::class, 'exportPdf']);
+        Route::get('/export-excel', [PayrollExportController::class, 'exportExcel']);
+        Route::get('/', [PayrollController::class, 'index']);
+        Route::post('/generate', [PayrollController::class, 'generate']);
+        Route::get('/{id}', [PayrollController::class, 'show']);
+    });
 });
 
 // thanh toán online

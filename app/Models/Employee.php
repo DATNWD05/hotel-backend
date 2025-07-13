@@ -47,6 +47,11 @@ class Employee extends Model
         return $this->hasMany(Attendance::class);
     }
 
+    public function payrolls()
+    {
+        return $this->hasMany(Payroll::class);
+    }
+
     public function faces()
     {
         return $this->hasMany(EmployeeFace::class);
