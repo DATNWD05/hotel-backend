@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\WorkAssignmentController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\PayrollExportController;
 
+use App\Http\Controllers\Api\ShiftController;
 
 
 
@@ -214,4 +215,12 @@ Route::prefix('work-assignments')->group(function () {
     Route::put('/{workAssignment}', [WorkAssignmentController::class, 'update']);
     Route::delete('/{workAssignment}', [WorkAssignmentController::class, 'destroy']);
     Route::post('/import', [WorkAssignmentController::class, 'import']);
+});
+
+Route::prefix('shifts')->group(function () {
+    Route::get('/', [ShiftController::class, 'index']);
+    Route::post('/', [ShiftController::class, 'store']);
+    Route::get('/{shift}', [ShiftController::class, 'show']);
+    Route::put('/{shift}', [ShiftController::class, 'update']);
+    Route::delete('/{shift}', [ShiftController::class, 'destroy']);
 });
