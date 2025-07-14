@@ -8,9 +8,18 @@ use App\Models\WorkAssignment;
 use Illuminate\Support\Facades\Validator;
 use App\Imports\WorkAssignmentImport;
 use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class WorkAssignmentController extends Controller
 {
+
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(WorkAssignment::class, 'work_assignments');
+    }
+
     // Danh sách phân công
     public function index(Request $request)
     {
