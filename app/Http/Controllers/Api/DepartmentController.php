@@ -23,7 +23,15 @@ class DepartmentController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => $data->items(),        // mảng 10 bản ghi của trang hiện tại
+            'data'   => $data->map(function ($department) {
+                return [
+                    'id'            => $department->id,
+                    'name'          => $department->name,
+                    'manager_name'  => $department->manager?->name, // Null-safe nếu không có manager
+                    'created_at'    => $department->created_at,
+                    'updated_at'    => $department->updated_at,
+                ];
+            }),
             'meta'   => [
                 'current_page' => $data->currentPage(),
                 'last_page'    => $data->lastPage(),
@@ -32,6 +40,7 @@ class DepartmentController extends Controller
             ],
         ]);
     }
+
 
     public function show(Department $department)
     {
@@ -61,9 +70,18 @@ class DepartmentController extends Controller
     {
         try {
             $department->update($request->validated());
+            $department->load('manager');
+
             return response()->json([
                 'status' => 'success',
-                'data' => $department->load('manager'),
+                'data'   => [
+                    'id'            => $department->id,
+                    'name'          => $department->name,
+                    'manager_id'    => $department->manager_id,
+                    'manager_name'  => $department->manager?->name,
+                    'created_at'    => $department->created_at,
+                    'updated_at'    => $department->updated_at,
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Lỗi hệ thống khi cập nhật phòng ban: ' . $e->getMessage());
