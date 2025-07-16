@@ -67,6 +67,7 @@ class UserController extends Controller
             'department_id' => 'nullable|exists:departments,id',
             'status' => 'required|string',
             'cccd' => 'nullable|string|max:20',
+            'face_image' => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048', // validate ảnh
         ]);
 
         if ($validator->fails()) {
@@ -78,6 +79,7 @@ class UserController extends Controller
 
         DB::beginTransaction();
         try {
+            // Lưu user
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
@@ -85,6 +87,16 @@ class UserController extends Controller
                 'role_id' => $request->role_id,
             ]);
 
+            // Xử lý upload ảnh nếu có
+            $imagePath = null;
+            if ($request->hasFile('face_image')) {
+                $image = $request->file('face_image');
+                $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+                $image->move(public_path('uploads/employees'), $imageName);
+                $imagePath = 'uploads/employees/' . $imageName;
+            }
+
+            // Lưu employee
             $employee = Employee::create([
                 'user_id' => $user->id,
                 'name' => $request->name,
@@ -98,6 +110,7 @@ class UserController extends Controller
                 'department_id' => $request->department_id,
                 'status' => $request->status,
                 'cccd' => $request->cccd,
+                'face_image' => $imagePath, // lưu đường dẫn ảnh
             ]);
 
             DB::commit();
@@ -115,6 +128,7 @@ class UserController extends Controller
             ], 500);
         }
     }
+
 
 
     public function show(User $user)
