@@ -250,7 +250,37 @@ class BookingController extends Controller
             'deposit_amount'         => 'nullable|numeric|min:0',
         ]);
 
-        // Cập nhật khách hàng nếu có
+        // Kiểm tra phòng bị trùng khi đổi phòng hoặc ngày
+        if ($request->hasAny(['room_ids', 'check_in_date', 'check_out_date'])) {
+            $newRoomIds = $validated['room_ids'] ?? $booking->rooms->pluck('id')->toArray();
+            $newCheckIn = $validated['check_in_date'] ?? $booking->check_in_date;
+            $newCheckOut = $validated['check_out_date'] ?? $booking->check_out_date;
+
+            foreach ($newRoomIds as $roomId) {
+                $conflict = DB::table('booking_room')
+                    ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
+                    ->where('booking_room.room_id', $roomId)
+                    ->where('bookings.id', '!=', $booking->id)
+                    ->whereIn('bookings.status', ['Pending', 'Confirmed'])
+                    ->where(function ($query) use ($newCheckIn, $newCheckOut) {
+                        $query->whereBetween('bookings.check_in_date', [$newCheckIn, $newCheckOut])
+                            ->orWhereBetween('bookings.check_out_date', [$newCheckIn, $newCheckOut])
+                            ->orWhere(function ($q) use ($newCheckIn, $newCheckOut) {
+                                $q->where('bookings.check_in_date', '<=', $newCheckIn)
+                                    ->where('bookings.check_out_date', '>=', $newCheckOut);
+                            });
+                    })
+                    ->exists();
+
+                if ($conflict) {
+                    return response()->json([
+                        'message' => "Phòng ID {$roomId} đã được đặt trong thời gian bạn chọn.",
+                    ], 422);
+                }
+            }
+        }
+
+        // 👤 Cập nhật khách hàng nếu có
         if ($request->has('customer')) {
             $customerData = $validated['customer'];
             $customer = Customer::updateOrCreate(
@@ -262,14 +292,13 @@ class BookingController extends Controller
             $customer = $booking->customer;
         }
 
-        // Cập nhật các trường đơn giản
+        // Cập nhật các trường ngày
         $booking->fill([
             'check_in_date'  => $validated['check_in_date'] ?? $booking->check_in_date,
             'check_out_date' => $validated['check_out_date'] ?? $booking->check_out_date,
             'check_in_at'    => $validated['check_in_at'] ?? $booking->check_in_at,
             'check_out_at'   => $validated['check_out_at'] ?? $booking->check_out_at,
         ]);
-
         $booking->save();
 
         $nights = Carbon::parse($booking->check_in_date)->diffInDays($booking->check_out_date);
@@ -319,9 +348,7 @@ class BookingController extends Controller
                 $discount = $promotion->discount_type === 'percent'
                     ? $rawTotal * ($promotion->discount_value / 100)
                     : $promotion->discount_value;
-
                 $promotion->increment('used_count');
-
                 $booking->promotions()->sync([
                     $promotion->id => [
                         'promotion_code' => $promotion->code,
@@ -333,7 +360,7 @@ class BookingController extends Controller
             $booking->promotions()->detach();
         }
 
-        // Xử lý trạng thái
+        // Trạng thái
         if (!empty($validated['check_in_at'])) {
             $booking->status = 'Checked-in';
         } elseif ($request->has('deposit_amount') && $validated['deposit_amount'] > 0) {
@@ -346,7 +373,7 @@ class BookingController extends Controller
             $booking->status = 'Checked-out';
         }
 
-        // Gửi email nếu có thay đổi cọc
+        // Gửi lại mail nếu thay đổi cọc
         $oldDeposit = $booking->deposit_amount;
         if ($request->has('deposit_amount')) {
             $newDeposit = $validated['deposit_amount'];
@@ -357,10 +384,10 @@ class BookingController extends Controller
             $booking->deposit_amount = $newDeposit;
         }
 
-        // Tính tổng
-        $booking->raw_total = $rawTotal;
+        // Tính toán lại tổng
+        $booking->raw_total       = $rawTotal;
         $booking->discount_amount = $discount;
-        $booking->total_amount = null; // Để tự động tính lại (nếu có observer hoặc event)
+        $booking->total_amount    = max(0, $rawTotal - $discount);
         $booking->save();
 
         return response()->json([
@@ -369,8 +396,16 @@ class BookingController extends Controller
         ]);
     }
 
+
     public function addServices(Request $request, Booking $booking)
     {
+        // Không cho thêm nếu đã checkout
+        if ($booking->status === 'Checked-out') {
+            return response()->json([
+                'message' => 'Không thể thêm dịch vụ vì đơn đặt phòng đã được checkout.'
+            ], 422);
+        }
+
         $validated = $request->validate([
             'services' => 'required|array|min:1',
             'services.*.room_id'    => 'nullable|exists:rooms,id',
@@ -387,7 +422,7 @@ class BookingController extends Controller
 
             if ($roomId && !$booking->rooms->contains('id', $roomId)) {
                 return response()->json([
-                    'message' => "Ph\u00f2ng ID {$roomId} kh\u00f4ng thu\u1ed9c booking n\u00e0y."
+                    'message' => "Phòng ID {$roomId} không thuộc booking này."
                 ], 422);
             }
 
@@ -426,10 +461,11 @@ class BookingController extends Controller
         $booking->recalculateTotal();
 
         return response()->json([
-            'message' => 'Th\u00eam d\u1ecbch v\u1ee5 th\u00e0nh c\u00f4ng',
+            'message' => 'Thêm dịch vụ thành công',
             'data'    => $booking->load(['services'])
         ]);
     }
+
     // thông tin khi checkin
     public function showCheckInInfo(Booking $booking)
     {
