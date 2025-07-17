@@ -13,12 +13,12 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class WorkAssignmentController extends Controller
 {
 
-    use AuthorizesRequests;
+    // use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(WorkAssignment::class, 'work_assignments');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(WorkAssignment::class, 'work_assignments');
+    // }
 
     // Danh sách phân công
     public function index(Request $request)
@@ -35,51 +35,76 @@ class WorkAssignmentController extends Controller
         ]);
     }
 
-
     public function store(Request $request)
     {
         $messages = [
-            'employee_id.required' => ' Vui lòng chọn nhân viên cần phân công.',
-            'employee_id.exists' => ' Nhân viên được chọn không tồn tại trong hệ thống.',
-            'shift_id.required' => ' Vui lòng chọn ca làm việc.',
-            'shift_id.exists' => ' Ca làm việc được chọn không tồn tại.',
-            'work_date.required' => ' Vui lòng chọn ngày làm việc.',
-            'work_date.date' => ' Ngày làm việc không hợp lệ. Vui lòng chọn đúng định dạng ngày (VD: 2025-07-11).',
+            'employee_ids.required' => 'Vui lòng chọn ít nhất một nhân viên.',
+            'employee_ids.array' => 'Danh sách nhân viên không hợp lệ.',
+            'employee_ids.*.exists' => 'Một hoặc nhiều nhân viên không tồn tại.',
+            'shift_id.required' => 'Vui lòng chọn ca làm việc.',
+            'shift_id.exists' => 'Ca làm việc không tồn tại.',
+            'work_dates.required' => 'Vui lòng chọn ít nhất một ngày làm việc.',
+            'work_dates.array' => 'Ngày làm việc không hợp lệ.',
+            'work_dates.*.date' => 'Một hoặc nhiều ngày làm việc không đúng định dạng.',
         ];
 
         $validator = Validator::make($request->all(), [
-            'employee_id' => 'required|exists:employees,id',
+            'employee_ids' => 'required|array',
+            'employee_ids.*' => 'exists:employees,id',
             'shift_id' => 'required|exists:shifts,id',
-            'work_date' => 'required|date',
+            'work_dates' => 'required|array',
+            'work_dates.*' => 'date',
         ], $messages);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => ' Dữ liệu không hợp lệ. Vui lòng kiểm tra lại các trường nhập.',
+                'message' => 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        // Kiểm tra trùng lặp
-        $exists = WorkAssignment::where('employee_id', $request->employee_id)
-            ->where('work_date', $request->work_date)
-            ->first();
+        $updated = [];
+        $created = [];
 
-        if ($exists) {
-            return response()->json([
-                'success' => false,
-                'message' => ' Nhân viên này đã được phân công trong ngày ' . $request->work_date . '.',
-            ], 409);
+        foreach ($request->employee_ids as $employeeId) {
+            foreach ($request->work_dates as $date) {
+                // Tìm bản ghi đã tồn tại theo employee + date
+                $assignment = WorkAssignment::where('employee_id', $employeeId)
+                    ->where('work_date', $date)
+                    ->first();
+
+                if ($assignment) {
+                    // Cập nhật shift_id nếu khác
+                    if ($assignment->shift_id != $request->shift_id) {
+                        $assignment->shift_id = $request->shift_id;
+                        $assignment->save();
+                        $updated[] = [
+                            'employee_id' => $employeeId,
+                            'work_date' => $date,
+                            'updated_shift' => $request->shift_id
+                        ];
+                    }
+                } else {
+                    // Tạo mới nếu chưa có
+                    $created[] = WorkAssignment::create([
+                        'employee_id' => $employeeId,
+                        'shift_id' => $request->shift_id,
+                        'work_date' => $date,
+                    ]);
+                }
+            }
         }
-
-        // Tạo mới
-        $assignment = WorkAssignment::create($validator->validated());
 
         return response()->json([
             'success' => true,
-            'message' => 'Phân công thành công cho nhân viên ID: ' . $assignment->employee_id . ' vào ngày ' . $assignment->work_date,
-            'data' => $assignment,
+            'message' => 'Phân công hoàn tất.',
+            'created_count' => count($created),
+            'updated_count' => count($updated),
+            'data' => [
+                'created' => $created,
+                'updated' => $updated
+            ]
         ]);
     }
 
@@ -109,20 +134,21 @@ class WorkAssignmentController extends Controller
             ], 422);
         }
 
-        // Kiểm tra trùng lặp
+        // Kiểm tra trùng phân công (nếu có phân công khác giống hệt)
         $exists = WorkAssignment::where('employee_id', $request->employee_id)
+            ->where('shift_id', $request->shift_id)
             ->where('work_date', $request->work_date)
             ->where('id', '!=', $workAssignment->id)
-            ->first();
+            ->exists();
 
         if ($exists) {
             return response()->json([
                 'success' => false,
-                'message' => 'Nhân viên này đã có phân công khác trong ngày ' . $request->work_date . '.',
+                'message' => 'Phân công này đã tồn tại cho nhân viên trong ca và ngày đã chọn.',
             ], 409);
         }
 
-        // Cập nhật phân công
+        // Cập nhật
         $workAssignment->update($validator->validated());
 
         return response()->json([

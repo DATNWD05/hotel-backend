@@ -14,12 +14,12 @@ use Illuminate\Support\Carbon;
 
 class InvoiceController extends Controller
 {
-    use AuthorizesRequests;
+    // use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(Invoice::class, 'invoice');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(Invoice::class, 'invoice');
+    // }
 
     // [2] API: Xem danh sách hóa đơn
     public function index()
