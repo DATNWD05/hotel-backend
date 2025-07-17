@@ -20,7 +20,7 @@ class EmployeeController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Employee::class, parameter: 'employees');
+        $this->authorizeResource(Employee::class, parameter: 'employee');
     }
     public function index()
     {
