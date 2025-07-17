@@ -38,6 +38,9 @@ class UpdateEmployeeRequest extends BaseFormRequest
             'department_id' => 'required|exists:departments,id',
             'hire_date' => 'required|date',
             'status' => 'required|in:active,not_active',
+
+            // validate ảnh
+            'face_image' => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
         ];
     }
 
@@ -74,6 +77,11 @@ class UpdateEmployeeRequest extends BaseFormRequest
 
             'status.required' => 'Trạng thái không được để trống.',
             'status.in' => 'Trạng thái phải là active, not_active.',
+
+            // thông báo lỗi ảnh
+            'face_image.image' => 'File tải lên phải là hình ảnh.',
+            'face_image.mimes' => 'Ảnh chỉ chấp nhận định dạng jpg, jpeg, png, gif.',
+            'face_image.max' => 'Ảnh không được vượt quá 2MB.',
         ];
     }
 }

@@ -72,7 +72,33 @@ class EmployeeController extends Controller
     public function update(UpdateEmployeeRequest $request, Employee $employee)
     {
         try {
-            $employee->update($request->validated());
+            $data = $request->validated();
+
+            // Nếu có ảnh mới
+            if ($request->hasFile('face_image')) {
+                // Xoá ảnh cũ nếu tồn tại
+                if ($employee->face_image && file_exists(public_path($employee->face_image))) {
+                    unlink(public_path($employee->face_image));
+                }
+
+                $image = $request->file('face_image');
+                $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+
+                $destination = public_path('uploads/employees');
+
+                if (!file_exists($destination)) {
+                    mkdir($destination, 0755, true);
+                }
+
+                $image->move($destination, $imageName);
+
+                // Lưu đường dẫn tương đối để dùng asset()
+                $data['face_image'] = 'uploads/employees/' . $imageName;
+            }
+
+            // Cập nhật thông tin
+            $employee->update($data);
+
             return response()->json([
                 'status' => 'success',
                 'data' => $employee->load('department'),
@@ -85,6 +111,8 @@ class EmployeeController extends Controller
             ], 500);
         }
     }
+
+
 
     public function destroy(Employee $employee)
     {
