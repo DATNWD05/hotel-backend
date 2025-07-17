@@ -64,32 +64,35 @@ class WorkAssignmentController extends Controller
             ], 422);
         }
 
+        $updated = [];
         $created = [];
-        $skipped = [];
 
         foreach ($request->employee_ids as $employeeId) {
             foreach ($request->work_dates as $date) {
-                // Kiểm tra trùng lặp
-                $exists = WorkAssignment::where('employee_id', $employeeId)
-                    ->where('shift_id', $request->shift_id)
+                // Tìm bản ghi đã tồn tại theo employee + date
+                $assignment = WorkAssignment::where('employee_id', $employeeId)
                     ->where('work_date', $date)
-                    ->exists();
+                    ->first();
 
-                if ($exists) {
-                    $skipped[] = [
+                if ($assignment) {
+                    // Cập nhật shift_id nếu khác
+                    if ($assignment->shift_id != $request->shift_id) {
+                        $assignment->shift_id = $request->shift_id;
+                        $assignment->save();
+                        $updated[] = [
+                            'employee_id' => $employeeId,
+                            'work_date' => $date,
+                            'updated_shift' => $request->shift_id
+                        ];
+                    }
+                } else {
+                    // Tạo mới nếu chưa có
+                    $created[] = WorkAssignment::create([
                         'employee_id' => $employeeId,
+                        'shift_id' => $request->shift_id,
                         'work_date' => $date,
-                        'reason' => 'Đã được phân công trước đó'
-                    ];
-                    continue;
+                    ]);
                 }
-
-                // Tạo mới
-                $created[] = WorkAssignment::create([
-                    'employee_id' => $employeeId,
-                    'shift_id' => $request->shift_id,
-                    'work_date' => $date,
-                ]);
             }
         }
 
@@ -97,10 +100,10 @@ class WorkAssignmentController extends Controller
             'success' => true,
             'message' => 'Phân công hoàn tất.',
             'created_count' => count($created),
-            'skipped_count' => count($skipped),
+            'updated_count' => count($updated),
             'data' => [
                 'created' => $created,
-                'skipped' => $skipped
+                'updated' => $updated
             ]
         ]);
     }
