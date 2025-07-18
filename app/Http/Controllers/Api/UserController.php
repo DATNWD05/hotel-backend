@@ -89,19 +89,26 @@ class UserController extends Controller
 
             // Xử lý upload ảnh nếu có
             $imagePath = null;
+
             if ($request->hasFile('face_image')) {
                 $image = $request->file('face_image');
                 $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
-                $image->move(public_path('uploads/employees'), $imageName);
-                $imagePath = 'uploads/employees/' . $imageName;
+
+                // Lưu vào disk 'public' đúng chuẩn (storage/app/public)
+                $image->storeAs('employees', $imageName, 'public');
+
+                // Lưu đường dẫn đúng để dùng asset('storage/...') hiển thị ảnh
+                $imagePath = 'storage/employees/' . $imageName;
             }
+
+
 
             // Lưu employee
             $employee = Employee::create([
                 'user_id' => $user->id,
                 'name' => $request->name,
                 'email' => $request->email,
-                'role' => $user->role->name ?? 'Receptionist',
+                'role_id' => $request->role_id,
                 'birthday' => $request->birthday,
                 'gender' => $request->gender,
                 'phone' => $request->phone,
