@@ -17,10 +17,10 @@ class UserController extends Controller
 {
     use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(User::class, 'user');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(User::class, 'user');
+    // }
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10); // mặc định 10 dòng mỗi trang
@@ -101,7 +101,7 @@ class UserController extends Controller
                 'user_id' => $user->id,
                 'name' => $request->name,
                 'email' => $request->email,
-                'role' => $user->role->name ?? 'Receptionist',
+                'role_id' => $request->role_id,
                 'birthday' => $request->birthday,
                 'gender' => $request->gender,
                 'phone' => $request->phone,
