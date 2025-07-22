@@ -20,7 +20,7 @@ class EmployeeController extends Controller
 
     public function __construct()
     {
-        $this->authorizeResource(Employee::class, parameter: 'employee');
+        $this->authorizeResource(Employee::class, parameter: 'employees');
     }
     public function index()
     {
@@ -77,20 +77,24 @@ class EmployeeController extends Controller
             // Nếu có ảnh mới
             if ($request->hasFile('face_image')) {
                 // Xoá ảnh cũ nếu tồn tại
-                if ($employee->face_image && Storage::disk('public')->exists(str_replace('storage/', '', $employee->face_image))) {
-                    Storage::disk('public')->delete(str_replace('storage/', '', $employee->face_image));
+                if ($employee->face_image && file_exists(public_path($employee->face_image))) {
+                    unlink(public_path($employee->face_image));
                 }
 
                 $image = $request->file('face_image');
                 $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
 
-                // Lưu file vào disk 'public' trong thư mục 'employees'
-                $image->storeAs('employees', $imageName, 'public');
+                $destination = public_path('uploads/employees');
 
-                // Gán đường dẫn tương đối để dùng asset()
-                $data['face_image'] = 'storage/employees/' . $imageName;
+                if (!file_exists($destination)) {
+                    mkdir($destination, 0755, true);
+                }
+
+                $image->move($destination, $imageName);
+
+                // Lưu đường dẫn tương đối để dùng asset()
+                $data['face_image'] = 'uploads/employees/' . $imageName;
             }
-
 
             // Cập nhật thông tin
             $employee->update($data);
