@@ -37,59 +37,54 @@ class WorkAssignmentController extends Controller
 
     public function store(Request $request)
     {
-        $messages = [
-            'employee_ids.required' => 'Vui lòng chọn ít nhất một nhân viên.',
-            'employee_ids.array' => 'Danh sách nhân viên không hợp lệ.',
-            'employee_ids.*.exists' => 'Một hoặc nhiều nhân viên không tồn tại.',
-            'shift_id.required' => 'Vui lòng chọn ca làm việc.',
-            'shift_id.exists' => 'Ca làm việc không tồn tại.',
-            'work_dates.required' => 'Vui lòng chọn ít nhất một ngày làm việc.',
-            'work_dates.array' => 'Ngày làm việc không hợp lệ.',
-            'work_dates.*.date' => 'Một hoặc nhiều ngày làm việc không đúng định dạng.',
-        ];
+        $request->validate([
+            'employee_ids' => 'required|array|min:1',
+            'work_dates' => 'required|array|min:1',
+            'shift_id' => 'nullable|exists:shifts,id',
+        ]);
 
-        $validator = Validator::make($request->all(), [
-            'employee_ids' => 'required|array',
-            'employee_ids.*' => 'exists:employees,id',
-            'shift_id' => 'required|exists:shifts,id',
-            'work_dates' => 'required|array',
-            'work_dates.*' => 'date',
-        ], $messages);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $updated = [];
         $created = [];
+        $updated = [];
+        $deleted = [];
 
         foreach ($request->employee_ids as $employeeId) {
             foreach ($request->work_dates as $date) {
-                // Tìm bản ghi đã tồn tại theo employee + date
                 $assignment = WorkAssignment::where('employee_id', $employeeId)
                     ->where('work_date', $date)
                     ->first();
 
+                $shiftId = $request->shift_id ?? null;
+
+                // Nếu không chọn ca (shift_id null hoặc rỗng) thì xóa phân công nếu có
+                if (empty($shiftId)) {
+                    if ($assignment) {
+                        $assignment->delete();
+                        $deleted[] = [
+                            'employee_id' => $employeeId,
+                            'work_date' => $date,
+                            'action' => 'deleted',
+                        ];
+                    }
+                    continue;
+                }
+
+                // Nếu đã có phân công, kiểm tra và cập nhật ca nếu khác
                 if ($assignment) {
-                    // Cập nhật shift_id nếu khác
-                    if ($assignment->shift_id != $request->shift_id) {
-                        $assignment->shift_id = $request->shift_id;
+                    if ($assignment->shift_id != $shiftId) {
+                        $assignment->shift_id = $shiftId;
                         $assignment->save();
+
                         $updated[] = [
                             'employee_id' => $employeeId,
                             'work_date' => $date,
-                            'updated_shift' => $request->shift_id
+                            'new_shift_id' => $shiftId,
                         ];
                     }
                 } else {
-                    // Tạo mới nếu chưa có
+                    // Nếu chưa có thì tạo mới phân công
                     $created[] = WorkAssignment::create([
                         'employee_id' => $employeeId,
-                        'shift_id' => $request->shift_id,
+                        'shift_id' => $shiftId,
                         'work_date' => $date,
                     ]);
                 }
@@ -98,12 +93,14 @@ class WorkAssignmentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Phân công hoàn tất.',
+            'message' => 'Phân công ca làm đã được xử lý.',
             'created_count' => count($created),
             'updated_count' => count($updated),
+            'deleted_count' => count($deleted),
             'data' => [
                 'created' => $created,
-                'updated' => $updated
+                'updated' => $updated,
+                'deleted' => $deleted,
             ]
         ]);
     }
