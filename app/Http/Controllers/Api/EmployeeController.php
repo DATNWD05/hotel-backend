@@ -131,8 +131,18 @@ class EmployeeController extends Controller
     }
 
     // Phương thức để upload ảnh khuôn mặt
-    public function uploadFaces(Request $request, Employee $employee)
+    public function uploadFaces(Request $request, $manv)
     {
+        // Lưu ý: dùng tên cột chính xác là "MaNV"
+        $employee = Employee::where('MaNV', $manv)->first();
+
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy nhân viên với mã: ' . $manv
+            ], 404);
+        }
+
         $request->validate([
             'images' => 'required|array',
             'images.*' => 'required|string' // base64 encoded strings
@@ -141,17 +151,13 @@ class EmployeeController extends Controller
         $saved = [];
 
         foreach ($request->input('images') as $base64Image) {
-            // Làm sạch chuỗi base64 (xóa tiền tố và chuẩn hóa)
             $base64Image = preg_replace('#^data:image/\w+;base64,#i', '', $base64Image);
             $base64Image = str_replace(' ', '+', $base64Image);
 
-            // Tạo tên file ngẫu nhiên
             $fileName = 'faces/' . Str::random(40) . '.jpg';
 
-            // Lưu file ảnh vào storage/public/faces
             Storage::disk('public')->put($fileName, base64_decode($base64Image));
 
-            // Lưu đường dẫn ảnh vào DB
             EmployeeFace::create([
                 'employee_id' => $employee->id,
                 'image_path' => $fileName,

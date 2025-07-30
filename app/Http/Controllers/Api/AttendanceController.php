@@ -11,6 +11,7 @@ use App\Models\Shift;
 use App\Models\WorkAssignment;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use App\Models\OvertimeRequest;
 
 class AttendanceController extends Controller
 {
@@ -174,96 +175,108 @@ class AttendanceController extends Controller
                 'image_base64_2' => $base64Image,
             ]);
 
-            if ($compareResponse->successful() && ($compareResponse['confidence'] ?? 0) >= 65) {
+            if ($compareResponse->successful() && ($compareResponse['confidence'] ?? 0) >= 85) {
                 $employee = $face->employee;
                 $now = now();
                 $today = $now->toDateString();
-                $yesterday = $now->copy()->subDay()->toDateString();
 
-                $assignment = WorkAssignment::where('employee_id', $employee->id)
-                    ->whereIn('work_date', [$today, $yesterday])
-                    ->orderByDesc('work_date')
+                // Lấy danh sách ca chính
+                $assignments = WorkAssignment::with('shift')
+                    ->where('employee_id', $employee->id)
+                    ->where('work_date', $today)
+                    ->get();
+
+                // Lấy thông tin tăng ca nếu có
+                $overtime = OvertimeRequest::where('employee_id', $employee->id)
+                    ->where('work_date', $today)
                     ->first();
 
-                if (!$assignment) {
+                // Dò thời gian hợp lệ checkin/check-out
+                $matchedSlot = null;
+                foreach ($assignments as $a) {
+                    $start = Carbon::createFromFormat('H:i:s', $a->shift->start_time)->setDateFrom($now);
+                    $end = Carbon::createFromFormat('H:i:s', $a->shift->end_time)->setDateFrom($now);
+                    if ($end->lessThan($start)) $end->addDay();
+
+                    if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
+                        $matchedSlot = [
+                            'start' => $start,
+                            'end' => $end,
+                            'shift_id' => $a->shift_id,
+                            'type' => 'shift'
+                        ];
+                        break;
+                    }
+                }
+
+                // Nếu không có ca chính phù hợp thì kiểm tra tăng ca
+                if (!$matchedSlot && $overtime) {
+                    $start = Carbon::createFromFormat('H:i', $overtime->start_time)->setDateFrom($now);
+                    $end = Carbon::createFromFormat('H:i', $overtime->end_time)->setDateFrom($now);
+
+                    if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
+                        $matchedSlot = [
+                            'start' => $start,
+                            'end' => $end,
+                            'shift_id' => null,
+                            'type' => 'overtime'
+                        ];
+                    }
+                }
+
+                if (!$matchedSlot) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Bạn không được phân công làm việc hôm nay.',
+                        'message' => 'Bạn không có ca làm hoặc tăng ca phù hợp để chấm công lúc này.',
                     ]);
                 }
 
-                $shift = Shift::find($assignment->shift_id);
-                $shiftStart = Carbon::createFromFormat('H:i:s', $shift->start_time)
-                    ->setDateFrom(Carbon::parse($assignment->work_date));
-                $shiftEnd = Carbon::createFromFormat('H:i:s', $shift->end_time)
-                    ->setDateFrom(Carbon::parse($assignment->work_date));
-
-                if ($shiftEnd->lessThan($shiftStart)) {
-                    $shiftEnd->addDay(); // ca qua đêm
-                }
-
-                $earlyWindow = $shiftStart->copy()->subMinutes(60);
-                $lateWindow = $shiftEnd->copy()->addHours(4);
-
+                // Tìm hoặc tạo chấm công
                 $attendance = Attendance::where('employee_id', $employee->id)
-                    ->where('work_date', $assignment->work_date)
+                    ->where('work_date', $today)
+                    ->where('shift_id', $matchedSlot['shift_id']) // null cho tăng ca
                     ->first();
 
-                // ==== CHECK-OUT ====
-                if ($attendance) {
-                    if ($attendance->check_out) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Bạn đã chấm công ra hôm nay rồi.',
-                        ]);
-                    }
+                if ($attendance && $attendance->check_out) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bạn đã chấm công ra rồi.',
+                    ]);
+                }
 
-                    $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in)->setDateFrom($shiftStart);
+                if ($attendance) {
+                    // CHECK-OUT
+                    $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in)->setDateFrom($matchedSlot['start']);
                     $checkOut = $now;
 
                     $actualMinutes = $checkIn->diffInMinutes($checkOut);
-                    $shiftMinutes = $shiftStart->diffInMinutes($shiftEnd);
+                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end']);
 
-                    $workedMinutes = min($actualMinutes, $shiftMinutes);
-                    $overtimeMinutes = max($actualMinutes - $shiftMinutes, 0);
+                    $workedMinutes = min($actualMinutes, $expectedMinutes);
+                    $overtimeMinutes = max($actualMinutes - $expectedMinutes, 0);
 
-                    $minWorkedMinutes = $shiftMinutes * 0.7;
-                    if ($workedMinutes < $minWorkedMinutes) {
+                    if ($workedMinutes < $expectedMinutes * 0.7) {
                         return response()->json([
                             'success' => false,
-                            'message' => 'Chưa đủ 70% thời gian làm việc để chấm công ra.',
+                            'message' => 'Chưa đủ 70% thời gian để chấm công ra.',
                         ]);
                     }
 
-                    // ✅ Làm tròn mỗi 30 phút = 0.5 giờ
-                    $workedHours = round($workedMinutes / 30) * 0.5;
-                    $overtimeHours = round($overtimeMinutes / 30) * 0.5;
-
-                    $earlyLeave = $shiftEnd->diffInMinutes($checkOut, false);
-                    $earlyLeaveMinutes = $earlyLeave > 0 ? 0 : abs($earlyLeave);
-
                     $attendance->update([
                         'check_out' => $checkOut->toTimeString(),
-                        'worked_hours' => $workedHours,
-                        'early_leave_minutes' => $earlyLeaveMinutes,
-                        'overtime_hours' => $overtimeHours,
+                        'worked_hours' => round($workedMinutes / 30) * 0.5,
+                        'early_leave_minutes' => max(0, $matchedSlot['end']->diffInMinutes($checkOut, false) < 0 ? abs($matchedSlot['end']->diffInMinutes($checkOut)) : 0),
+                        'overtime_hours' => round($overtimeMinutes / 30) * 0.5,
                     ]);
 
                     return response()->json([
                         'success' => true,
-                        'message' => "Chấm công ra thành công cho {$employee->name}. Giờ làm: {$workedHours}h, Tăng ca: {$overtimeHours}h",
+                        'message' => "Chấm công ra thành công cho {$employee->name}",
                     ]);
                 }
 
-                // ==== CHECK-IN ====
-                if (!$now->between($earlyWindow, $lateWindow)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Không nằm trong thời gian hợp lệ để chấm công vào.',
-                    ]);
-                }
-
-                $lateMinutes = $now->gt($shiftStart) ? $shiftStart->diffInMinutes($now) : 0;
+                // CHECK-IN
+                $lateMinutes = $now->gt($matchedSlot['start']) ? $matchedSlot['start']->diffInMinutes($now) : 0;
                 if ($lateMinutes > 120) {
                     return response()->json([
                         'success' => false,
@@ -273,15 +286,15 @@ class AttendanceController extends Controller
 
                 Attendance::create([
                     'employee_id' => $employee->id,
-                    'shift_id' => $shift->id,
-                    'work_date' => $assignment->work_date,
+                    'shift_id' => $matchedSlot['shift_id'],
+                    'work_date' => $today,
                     'check_in' => $now->toTimeString(),
                     'late_minutes' => $lateMinutes,
                 ]);
 
                 return response()->json([
                     'success' => true,
-                    'message' => "Chấm công vào thành công cho {$employee->name}.",
+                    'message' => "Chấm công vào thành công cho {$employee->name}",
                 ]);
             }
         }

@@ -40,9 +40,10 @@ use App\Http\Controllers\Api\PayrollExportController;
 
 use App\Http\Controllers\Api\ShiftController;
 
+use App\Http\Controllers\Api\OvertimeRequestController;
 
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
     // Chỉ cho admin được xem danh sách và chi tiết người dùng
     Route::get('/users', [UserController::class, 'index']);
     Route::post('/users', [UserController::class, 'store']);
@@ -69,7 +70,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/rooms/{room}/restore', [RoomController::class, 'restore']);
     Route::delete('/rooms/{room}/force-delete', [RoomController::class, 'forceDelete']);
 
-
     // route về quản lí khuyến mãi
     Route::apiResource('promotions', PromotionController::class);
     // Route::apiResource('bookings',   BookingController::class);
@@ -82,7 +82,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Nhóm tiện nghi
     Route::prefix('amenity-categories')->group(function () {
-
 
         // Chỉ hiển thị các bản ghi đã bị xóa mềm soft-deleted
         Route::get('trashed', [AmenityCategoryController::class, 'trashed'])
@@ -127,15 +126,30 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/generate', [PayrollController::class, 'generate']);
         Route::get('/{id}', [PayrollController::class, 'show']);
     });
+
+    // Routes cho quản lý ca làm việc
+    Route::prefix('work-assignments')->group(function () {
+        Route::get('/', [WorkAssignmentController::class, 'index']);
+        Route::post('/', [WorkAssignmentController::class, 'store']);
+        // Route::put('/{workAssignment}', [WorkAssignmentController::class, 'update']);
+        // Route::delete('/{workAssignment}', [WorkAssignmentController::class, 'destroy']);
+        Route::post('/import', [WorkAssignmentController::class, 'import']);
+    });
+
+    Route::prefix('shifts')->group(function () {
+        Route::get('/', [ShiftController::class, 'index']);
+        Route::post('/', [ShiftController::class, 'store']);
+        Route::get('/{shift}', [ShiftController::class, 'show']);
+        Route::put('/{shift}', [ShiftController::class, 'update']);
+        Route::delete('/{shift}', [ShiftController::class, 'destroy']);
+    });
+
+    // Routes cho yêu cầu tăng ca
+    Route::prefix('overtime-requests')->group(function () {
+        Route::get('/', [OvertimeRequestController::class, 'index']);
+        Route::post('/', [OvertimeRequestController::class, 'store']);
+    });
 });
-
-// thanh toán online
-Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
-Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
-// thanh toán online cọc
-Route::get('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline'])->name('deposit.vnpay.create');
-Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositReturn'])->name('vnpay.deposit.return');
-
 
 // Khách hàng
 Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
@@ -145,12 +159,6 @@ Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
     Route::put('/customers/{customer}', [CustomerController::class, 'update']);
     Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
 });
-
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-Route::post('/forgot-password', [AuthController::class, 'forgot']);
-Route::post('/reset-password', [AuthController::class, 'reset']);
 
 // Xử lý Bookings
 Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
@@ -198,29 +206,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/permissions', [PermissionController::class, 'index']);
 });
 
-// Routes cho châm công
+// Routes cho quản lý đăng nhập và xác thực
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('/forgot-password', [AuthController::class, 'forgot']);
+Route::post('/reset-password', [AuthController::class, 'reset']);
+
+// Routes cho quản lý chấm công
 Route::get('/attendances', [AttendanceController::class, 'index']);
 Route::post('/faceAttendance', [AttendanceController::class, 'faceAttendance']);
 // Route::post('/attendance/check-in', [AttendanceController::class, 'checkIn']);
 // Route::post('/attendance/check-out', [AttendanceController::class, 'checkOut']);
 
 // Thêm danh tính
-Route::post('/employees/{employee}/upload-faces', [EmployeeController::class, 'uploadFaces']);
+Route::post('/employees/{manv}/upload-faces', [EmployeeController::class, 'uploadFaces']);
 
-
-// Routes cho quản lý ca làm việc
-Route::prefix('work-assignments')->group(function () {
-    Route::get('/', [WorkAssignmentController::class, 'index']);
-    Route::post('/', [WorkAssignmentController::class, 'store']);
-    Route::put('/{workAssignment}', [WorkAssignmentController::class, 'update']);
-    Route::delete('/{workAssignment}', [WorkAssignmentController::class, 'destroy']);
-    Route::post('/import', [WorkAssignmentController::class, 'import']);
-});
-
-Route::prefix('shifts')->group(function () {
-    Route::get('/', [ShiftController::class, 'index']);
-    Route::post('/', [ShiftController::class, 'store']);
-    Route::get('/{shift}', [ShiftController::class, 'show']);
-    Route::put('/{shift}', [ShiftController::class, 'update']);
-    Route::delete('/{shift}', [ShiftController::class, 'destroy']);
-});
+// thanh toán online
+Route::post('/vnpay/create-payment', [VNPayController::class, 'create']);
+Route::get('/vnpay/return', [VNPayController::class, 'handleReturn']);
+// thanh toán online cọc
+Route::get('/deposit/vnpay/create', [VNPayController::class, 'payDepositOnline'])->name('deposit.vnpay.create');
+Route::get('/deposit/vnpay/return', [VNPayController::class, 'handleDepositReturn'])->name('vnpay.deposit.return');
