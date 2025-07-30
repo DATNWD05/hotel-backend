@@ -35,57 +35,74 @@ class WorkAssignmentController extends Controller
         ]);
     }
 
+    // Phân công nhiều ca làm việc
     public function store(Request $request)
     {
         $request->validate([
-            'employee_ids' => 'required|array|min:1',
-            'work_dates' => 'required|array|min:1',
-            'shift_id' => 'nullable|exists:shifts,id',
+            'assignments' => 'required|array|min:1',
+            'assignments.*.employee_id' => 'required|exists:employees,id',
+            'assignments.*.work_date' => 'required|date',
+            'assignments.*.shift_ids' => 'nullable|array',
+            'assignments.*.shift_ids.*' => 'exists:shifts,id'
         ]);
 
         $created = [];
-        $updated = [];
         $deleted = [];
+        $skipped = [];
 
-        foreach ($request->employee_ids as $employeeId) {
-            foreach ($request->work_dates as $date) {
-                $assignment = WorkAssignment::where('employee_id', $employeeId)
-                    ->where('work_date', $date)
-                    ->first();
+        $today = now()->format('Y-m-d');
 
-                $shiftId = $request->shift_id ?? null;
+        foreach ($request->assignments as $assignment) {
+            $employeeId = $assignment['employee_id'];
+            $date = $assignment['work_date'];
+            $newShiftIds = $assignment['shift_ids'] ?? [];
 
-                // Nếu không chọn ca (shift_id null hoặc rỗng) thì xóa phân công nếu có
-                if (empty($shiftId)) {
-                    if ($assignment) {
-                        $assignment->delete();
-                        $deleted[] = [
-                            'employee_id' => $employeeId,
-                            'work_date' => $date,
-                            'action' => 'deleted',
-                        ];
-                    }
-                    continue;
+            // Không cho phép phân công ngược ngày
+            if ($date < $today) {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date' => $date,
+                    'reason' => 'Không thể phân công cho ngày đã qua'
+                ];
+                continue;
+            }
+
+            // Giới hạn tối đa 2 ca/ngày
+            if (count($newShiftIds) > 2) {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date' => $date,
+                    'reason' => 'Vượt quá giới hạn 2 ca/ngày'
+                ];
+                continue;
+            }
+
+            // Lấy các ca đã phân cho nhân viên trong ngày đó
+            $existingAssignments = WorkAssignment::where('employee_id', $employeeId)
+                ->where('work_date', $date)
+                ->get();
+
+            $existingShiftIds = $existingAssignments->pluck('shift_id')->toArray();
+
+            // Xóa những ca không còn tồn tại
+            foreach ($existingAssignments as $existing) {
+                if (!in_array($existing->shift_id, $newShiftIds)) {
+                    $existing->delete();
+                    $deleted[] = [
+                        'employee_id' => $employeeId,
+                        'work_date' => $date,
+                        'shift_id' => $existing->shift_id
+                    ];
                 }
+            }
 
-                // Nếu đã có phân công, kiểm tra và cập nhật ca nếu khác
-                if ($assignment) {
-                    if ($assignment->shift_id != $shiftId) {
-                        $assignment->shift_id = $shiftId;
-                        $assignment->save();
-
-                        $updated[] = [
-                            'employee_id' => $employeeId,
-                            'work_date' => $date,
-                            'new_shift_id' => $shiftId,
-                        ];
-                    }
-                } else {
-                    // Nếu chưa có thì tạo mới phân công
+            // Tạo mới các ca chưa có
+            foreach ($newShiftIds as $shiftId) {
+                if (!in_array($shiftId, $existingShiftIds)) {
                     $created[] = WorkAssignment::create([
                         'employee_id' => $employeeId,
-                        'shift_id' => $shiftId,
                         'work_date' => $date,
+                        'shift_id' => $shiftId
                     ]);
                 }
             }
@@ -93,85 +110,85 @@ class WorkAssignmentController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Phân công ca làm đã được xử lý.',
+            'message' => 'Phân công nhiều ca đã được xử lý.',
             'created_count' => count($created),
-            'updated_count' => count($updated),
             'deleted_count' => count($deleted),
+            'skipped_count' => count($skipped),
             'data' => [
                 'created' => $created,
-                'updated' => $updated,
                 'deleted' => $deleted,
+                'skipped' => $skipped
             ]
         ]);
     }
 
     // Cập nhật phân công
-    public function update(Request $request, WorkAssignment $workAssignment)
-    {
-        $messages = [
-            'employee_id.required' => 'Vui lòng chọn nhân viên cần phân công.',
-            'employee_id.exists' => 'Nhân viên không tồn tại trong hệ thống.',
-            'shift_id.required' => 'Vui lòng chọn ca làm việc.',
-            'shift_id.exists' => 'Ca làm việc không tồn tại.',
-            'work_date.required' => 'Vui lòng chọn ngày làm việc.',
-            'work_date.date' => 'Ngày làm việc không hợp lệ. Vui lòng nhập đúng định dạng YYYY-MM-DD.',
-        ];
+    // public function update(Request $request, WorkAssignment $workAssignment)
+    // {
+    //     $messages = [
+    //         'employee_id.required' => 'Vui lòng chọn nhân viên cần phân công.',
+    //         'employee_id.exists' => 'Nhân viên không tồn tại trong hệ thống.',
+    //         'shift_id.required' => 'Vui lòng chọn ca làm việc.',
+    //         'shift_id.exists' => 'Ca làm việc không tồn tại.',
+    //         'work_date.required' => 'Vui lòng chọn ngày làm việc.',
+    //         'work_date.date' => 'Ngày làm việc không hợp lệ. Vui lòng nhập đúng định dạng YYYY-MM-DD.',
+    //     ];
 
-        $validator = Validator::make($request->all(), [
-            'employee_id' => 'required|exists:employees,id',
-            'shift_id' => 'required|exists:shifts,id',
-            'work_date' => 'required|date',
-        ], $messages);
+    //     $validator = Validator::make($request->all(), [
+    //         'employee_id' => 'required|exists:employees,id',
+    //         'shift_id' => 'required|exists:shifts,id',
+    //         'work_date' => 'required|date',
+    //     ], $messages);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Dữ liệu không hợp lệ khi cập nhật phân công.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
+    //     if ($validator->fails()) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Dữ liệu không hợp lệ khi cập nhật phân công.',
+    //             'errors' => $validator->errors()
+    //         ], 422);
+    //     }
 
-        // Kiểm tra trùng phân công (nếu có phân công khác giống hệt)
-        $exists = WorkAssignment::where('employee_id', $request->employee_id)
-            ->where('shift_id', $request->shift_id)
-            ->where('work_date', $request->work_date)
-            ->where('id', '!=', $workAssignment->id)
-            ->exists();
+    //     // Kiểm tra trùng phân công (nếu có phân công khác giống hệt)
+    //     $exists = WorkAssignment::where('employee_id', $request->employee_id)
+    //         ->where('shift_id', $request->shift_id)
+    //         ->where('work_date', $request->work_date)
+    //         ->where('id', '!=', $workAssignment->id)
+    //         ->exists();
 
-        if ($exists) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Phân công này đã tồn tại cho nhân viên trong ca và ngày đã chọn.',
-            ], 409);
-        }
+    //     if ($exists) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Phân công này đã tồn tại cho nhân viên trong ca và ngày đã chọn.',
+    //         ], 409);
+    //     }
 
-        // Cập nhật
-        $workAssignment->update($validator->validated());
+    //     // Cập nhật
+    //     $workAssignment->update($validator->validated());
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Cập nhật phân công thành công.',
-            'data' => $workAssignment,
-        ]);
-    }
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Cập nhật phân công thành công.',
+    //         'data' => $workAssignment,
+    //     ]);
+    // }
 
     // Xoá phân công
-    public function destroy(WorkAssignment $workAssignment)
-    {
-        if (!$workAssignment) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy phân công cần xoá.',
-            ], 404);
-        }
+    // public function destroy(WorkAssignment $workAssignment)
+    // {
+    //     if (!$workAssignment) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Không tìm thấy phân công cần xoá.',
+    //         ], 404);
+    //     }
 
-        $workAssignment->delete();
+    //     $workAssignment->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Xoá phân công thành công.',
-        ]);
-    }
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Xoá phân công thành công.',
+    //     ]);
+    // }
 
     public function import(Request $request)
     {
