@@ -35,7 +35,8 @@
         <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Thu thập khuôn mặt nhân viên</h2>
 
         <div class="flex justify-center mb-4">
-            <input type="number" id="employeeId" placeholder="Nhập ID nhân viên" class="w-full max-w-xs p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <!-- Đã sửa: đổi ID và placeholder -->
+            <input type="text" id="employeeCode" placeholder="Nhập mã nhân viên (MNV)" class="w-full max-w-xs p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div class="flex justify-center">
@@ -74,14 +75,15 @@
                 statusEl.innerText = 'Đang chạy camera...';
                 statusEl.classList.add('status-success');
 
-                const employeeIdInput = document.getElementById('employeeId');
+                // Đã sửa: đổi từ employeeIdInput thành employeeCodeInput
+                const employeeCodeInput = document.getElementById('employeeCode');
 
                 setInterval(() => {
                     if (isCapturing || capturedCount >= maxImages) return;
 
-                    const employeeId = employeeIdInput.value.trim();
-                    if (!employeeId) {
-                        statusEl.innerText = 'Vui lòng nhập ID nhân viên';
+                    const employeeCode = employeeCodeInput.value.trim(); // Đã sửa
+                    if (!employeeCode) {
+                        statusEl.innerText = 'Vui lòng nhập mã nhân viên';
                         statusEl.classList.remove('status-success');
                         statusEl.classList.add('status-error');
                         return;
@@ -91,9 +93,9 @@
                         statusEl.innerText = '🔔 Chuẩn bị chụp ảnh đầu tiên...';
                         statusEl.classList.remove('status-error');
                         statusEl.classList.add('status-success');
-                        startCountdown(employeeId, 3, true);
+                        startCountdown(employeeCode, 3, true); // Đã sửa
                     } else {
-                        setTimeout(() => captureFace(employeeId), 1500);
+                        setTimeout(() => captureFace(employeeCode), 1500); // Đã sửa
                         isCapturing = true;
                     }
                 }, 1500);
@@ -104,7 +106,8 @@
                 errorSound.play();
             });
 
-        function startCountdown(employeeId, seconds, withBeep = false) {
+        // Đã sửa: đổi tên tham số từ employeeId -> employeeCode
+        function startCountdown(employeeCode, seconds, withBeep = false) {
             isCapturing = true;
             let count = seconds;
             countdownEl.innerText = count;
@@ -116,12 +119,13 @@
 
                 if (count <= 0) {
                     clearInterval(countdown);
-                    captureFace(employeeId);
+                    captureFace(employeeCode); // Đã sửa
                 }
             }, 1000);
         }
 
-        function captureFace(employeeId) {
+        // Đã sửa: đổi tên tham số từ employeeId -> employeeCode
+        function captureFace(employeeCode) {
             const canvas = document.createElement('canvas');
             canvas.width = 320;
             canvas.height = 240;
@@ -135,7 +139,8 @@
             }
             lastSentImage = base64;
 
-            fetch(`/api/employees/${employeeId}/upload-faces`, {
+            // Đã sửa: URL sử dụng employeeCode thay vì ID
+            fetch(`/api/employees/${employeeCode}/upload-faces`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
