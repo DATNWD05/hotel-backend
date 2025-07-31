@@ -8,9 +8,18 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use App\Models\Attendance;
 use App\Models\Employee;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class OvertimeRequestController extends Controller
 {
+
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
+    }
+
     /**
      * Lấy danh sách tất cả phiếu tăng ca (tuỳ chọn lọc theo ngày hoặc nhân viên)
      */
