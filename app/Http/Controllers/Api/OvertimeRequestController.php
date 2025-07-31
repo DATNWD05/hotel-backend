@@ -6,11 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Models\OvertimeRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use App\Models\WorkAssignment;
 use App\Models\Attendance;
 use App\Models\Employee;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class OvertimeRequestController extends Controller
 {
+    use AuthorizesRequests;
+
+    public function __construct()
+    {
+        $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
+    }
+
     /**
      * Lấy danh sách tất cả phiếu tăng ca (tuỳ chọn lọc theo ngày hoặc nhân viên)
      */
@@ -86,9 +95,9 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Đếm số ca chính trong ngày work_date
-            $mainShiftsCount = Attendance::where('employee_id', $employeeId)
-                ->whereDate('check_in', $workDate)
+            // Đếm số ca chính trong ngày work_date dựa trên WorkAssignment
+            $mainShiftsCount = WorkAssignment::where('employee_id', $employeeId)
+                ->where('work_date', $workDate)
                 ->count();
 
             // Tính số giờ tăng ca
@@ -101,7 +110,7 @@ class OvertimeRequestController extends Controller
                 $errorList[] = [
                     'employee_id' => $employeeId,
                     'employee_name' => $employee->name,
-                    'reason' => "Tăng ca {$otHours} tiếng, vượt giới hạn tối đa {$maxAllowed} tiếng (đã làm {$mainShiftsCount} ca)"
+                    'reason' => "Tăng ca {$otHours} tiếng, vượt giới hạn tối đa {$maxAllowed} tiếng (đã được phân công {$mainShiftsCount} ca)"
                 ];
                 continue;
             }
@@ -110,17 +119,17 @@ class OvertimeRequestController extends Controller
                 $errorList[] = [
                     'employee_id' => $employeeId,
                     'employee_name' => $employee->name,
-                    'reason' => 'Đã làm đủ 2 ca chính, không được tăng ca'
+                    'reason' => 'Đã được phân công đủ 2 ca chính, không được tăng ca'
                 ];
                 continue;
             }
 
             // Kiểm tra trùng với ca chính
-            $hasMainShiftConflict = Attendance::where('employee_id', $employeeId)
-                ->whereDate('check_in', $workDate)
-                ->where(function ($q) use ($startDateTime, $endDateTime) {
-                    $q->whereTime('check_in', '<', $endDateTime->toTimeString())
-                        ->whereTime('check_out', '>', $startDateTime->toTimeString());
+            $hasMainShiftConflict = WorkAssignment::where('employee_id', $employeeId)
+                ->where('work_date', $workDate)
+                ->whereHas('shift', function ($q) use ($startDateTime, $endDateTime) {
+                    $q->whereTime('start_time', '<', $endDateTime->toTimeString())
+                        ->whereTime('end_time', '>', $startDateTime->toTimeString());
                 })
                 ->exists();
 
@@ -128,7 +137,7 @@ class OvertimeRequestController extends Controller
                 $errorList[] = [
                     'employee_id' => $employeeId,
                     'employee_name' => $employee->name,
-                    'reason' => 'Thời gian tăng ca trùng với ca chính'
+                    'reason' => 'Thời gian tăng ca trùng với ca chính đã được phân công'
                 ];
                 continue;
             }
