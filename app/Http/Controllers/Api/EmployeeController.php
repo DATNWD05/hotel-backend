@@ -16,12 +16,12 @@ use Illuminate\Support\Str;
 
 class EmployeeController extends Controller
 {
-    use AuthorizesRequests;
+    // use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(Employee::class, parameter: 'employee');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(Employee::class, parameter: 'employee');
+    // }
     public function index()
     {
         $data = Employee::with(['department', 'role', 'user'])->paginate(10);

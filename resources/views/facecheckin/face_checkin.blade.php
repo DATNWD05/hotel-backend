@@ -95,7 +95,8 @@
                             "X-CSRF-TOKEN": csrfToken
                         },
                         body: JSON.stringify({
-                            image: imageData
+                            image: imageData,
+                            timestamp: new Date().toISOString() // Thêm timestamp để kiểm tra ngày
                         })
                     })
                     .then((res) => res.json())
@@ -111,6 +112,7 @@
                                 document.getElementById("checkoutSuccess").play();
                             }
 
+                            // Tạm dừng 5 giây trước khi tiếp tục
                             clearInterval(interval);
                             setTimeout(() => {
                                 statusDiv.innerText = "🔄 Sẵn sàng nhận diện người tiếp theo...";
@@ -125,6 +127,12 @@
                             statusDiv.classList.add('status-error');
                             document.getElementById("failSound").play();
                             isChecking = false;
+
+                            // Nếu lỗi do ngày hoặc khung giờ, không thử lại ngay
+                            if (data.message.includes("ngày đã qua") || data.message.includes("khung giờ")) {
+                                clearInterval(interval);
+                                statusDiv.innerText = "🔄 Hệ thống tạm dừng do ngoài khung giờ hoặc ngày không hợp lệ.";
+                            }
                         }
                     })
                     .catch((err) => {
@@ -135,8 +143,15 @@
                         isChecking = false;
                         console.error("Fetch error:", err);
                     });
-            }, 7000);
+            }, 7000); // Kiểm tra mỗi 7 giây
         }
+
+        // Ngắt kết nối camera khi đóng trang
+        window.onbeforeunload = function() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        };
     </script>
 </body>
 

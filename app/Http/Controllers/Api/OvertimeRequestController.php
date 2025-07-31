@@ -6,23 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\OvertimeRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use App\Models\WorkAssignment;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use App\Models\Attendance;
 use App\Models\Employee;
 
-
-
 class OvertimeRequestController extends Controller
 {
-
-    use AuthorizesRequests;
-
-    public function __construct()
-    {
-        $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
-    }
-
     /**
      * Lấy danh sách tất cả phiếu tăng ca (tuỳ chọn lọc theo ngày hoặc nhân viên)
      */
@@ -30,12 +18,10 @@ class OvertimeRequestController extends Controller
     {
         $query = OvertimeRequest::with('employee');
 
-        // Nếu có lọc theo ngày
         if ($request->has('date')) {
             $query->where('work_date', $request->date);
         }
 
-        // Nếu có lọc theo nhân viên
         if ($request->has('employee_id')) {
             $query->where('employee_id', $request->employee_id);
         }
@@ -56,28 +42,13 @@ class OvertimeRequestController extends Controller
             'overtime_requests' => 'required|array',
             'overtime_requests.*.employee_id' => 'required|exists:employees,id',
             'overtime_requests.*.start_time' => 'required|date_format:H:i',
-            'overtime_requests.*.end_time' => 'required|date_format:H:i|after:overtime_requests.*.start_time',
+            'overtime_requests.*.end_time' => 'required|date_format:H:i', // Loại bỏ 'after'
             'overtime_requests.*.reason' => 'nullable|string',
         ]);
 
         $workDate = Carbon::parse($validated['work_date']);
         $requests = $validated['overtime_requests'];
-
-        // Kiểm tra ngày đã qua
-        if ($workDate->lt(Carbon::today())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không được phép đăng ký tăng ca cho ngày đã qua.',
-                'data' => [
-                    'created' => [],
-                    'errors' => [
-                        [
-                            'reason' => 'Ngày làm việc đã qua: ' . $workDate->toDateString()
-                        ]
-                    ]
-                ]
-            ], 422);
-        }
+        $now = Carbon::now();
 
         $successList = [];
         $errorList = [];
@@ -97,19 +68,28 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Đếm số ca chính trong ngày
-            $mainShiftsCount = Attendance::where('employee_id', $employeeId)
-                ->whereDate('check_in', $workDate)
-                ->count();
-
-            // Tạo đối tượng thời gian đầy đủ cho start_time và end_time
+            // Tạo đối tượng thời gian đầy đủ
             $startDateTime = Carbon::parse($workDate)->setTimeFromTimeString($startTime);
             $endDateTime = Carbon::parse($workDate)->setTimeFromTimeString($endTime);
 
-            // Nếu end_time nhỏ hơn start_time, giả định end_time thuộc ngày tiếp theo
+            // Xử lý ca đêm: nếu end_time < start_time, thêm 1 ngày cho endDateTime
             if ($endDateTime->lt($startDateTime)) {
                 $endDateTime->addDay();
             }
+
+            // Kiểm tra tính hợp lệ của khoảng thời gian
+            if ($startDateTime->lt($now) && $endDateTime->lt($now)) {
+                $errorList[] = [
+                    'employee_id' => $employeeId,
+                    'reason' => 'Khoảng thời gian tăng ca đã hoàn toàn qua: ' . $startDateTime->toDateTimeString() . ' - ' . $endDateTime->toDateTimeString()
+                ];
+                continue;
+            }
+
+            // Đếm số ca chính trong ngày work_date
+            $mainShiftsCount = Attendance::where('employee_id', $employeeId)
+                ->whereDate('check_in', $workDate)
+                ->count();
 
             // Tính số giờ tăng ca
             $otHours = $startDateTime->floatDiffInHours($endDateTime);
