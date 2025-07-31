@@ -10,12 +10,12 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class ShiftController extends Controller
 {
 
-    // use AuthorizesRequests;
+    use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(Shift::class, 'shifts');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(Shift::class, 'shifts');
+    }
 
     public function index()
     {
