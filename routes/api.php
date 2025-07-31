@@ -151,15 +151,6 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
     });
 });
 
-// Khách hàng
-Route::middleware(['auth:sanctum', 'role:1,2,3'])->group(function () {
-    Route::get('/customers', [CustomerController::class, 'index']);
-    Route::get('/customers/{customer}', [CustomerController::class, 'show']);
-    Route::post('/customers', [CustomerController::class, 'store']);
-    Route::put('/customers/{customer}', [CustomerController::class, 'update']);
-    Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
-});
-
 // Xử lý Bookings
 Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings', [BookingController::class, 'index']);
@@ -179,6 +170,13 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
 
     Route::post('/bookings/{booking}/remove-service', [BookingController::class, 'removeService']);
 
+    // Khách hàng
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::get('/customers/{customer}', [CustomerController::class, 'show']);
+    Route::post('/customers', [CustomerController::class, 'store']);
+    Route::put('/customers/{customer}', [CustomerController::class, 'update']);
+    Route::get('/customers/check-cccd/{cccd}', [CustomerController::class, 'checkCccd']);
+
     // Hóa đơn
     Route::prefix('invoices')->group(function () {
 
@@ -194,7 +192,7 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
 });
 
 // Phân quyền
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:sanctum', "role:1")->group(function () {
     // Resource routes: index, store, show, update, destroy
     Route::apiResource('roles', RoleController::class);
 
