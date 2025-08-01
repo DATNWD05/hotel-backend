@@ -23,10 +23,10 @@ class BookingController extends Controller
 {
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(Booking::class, 'booking');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(Booking::class, 'booking');
+    }
     /**
      * Hiển thị danh sách tất cả các đơn đặt phòng.
      */
