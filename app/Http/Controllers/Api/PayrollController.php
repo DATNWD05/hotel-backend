@@ -97,14 +97,17 @@ class PayrollController extends Controller
     {
         $month = $request->input('month');
 
-        $query = Payroll::with('employee');
-
-        if ($month) {
-            $query->where('month', $month);
+        // Nếu không có month, lấy tháng mới nhất trong bảng payrolls
+        if (!$month) {
+            $month = Payroll::orderByDesc('month')->value('month');
         }
 
+        // Truy vấn payroll theo tháng đã xác định
+        $query = Payroll::with('employee')->where('month', $month);
+
         return response()->json([
-            'data' => $query->orderBy('month', 'desc')->paginate(10),
+            'data' => $query->orderBy('employee_id')->paginate(10),
+            'selected_month' => $month // trả về luôn để FE biết bạn đang xem tháng nào
         ]);
     }
 
