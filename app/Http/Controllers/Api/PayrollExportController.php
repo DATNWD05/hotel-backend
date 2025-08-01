@@ -16,12 +16,12 @@ class PayrollExportController extends Controller
 {
     public function exportExcel()
     {
-        // Xử lý tháng năm linh hoạt
         $monthInput = request('month');
         $yearInput = request('year');
 
+        // Xử lý chuỗi tháng năm
         if ($monthInput && str_contains($monthInput, '-')) {
-            $monthString = $monthInput; // VD: "2025-07"
+            $monthString = $monthInput; // VD: "2025-08"
         } else {
             $month = str_pad($monthInput ?? now()->format('m'), 2, '0', STR_PAD_LEFT);
             $year = $yearInput ?? now()->format('Y');
@@ -39,7 +39,7 @@ class PayrollExportController extends Controller
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
-        // === DÒNG TIÊU ĐỀ LỚN ===
+        // === TIÊU ĐỀ LỚN ===
         $title = 'BẢNG LƯƠNG NHÂN VIÊN THÁNG ' . substr($monthString, 5, 2) . ' NĂM ' . substr($monthString, 0, 4);
         $sheet->mergeCells('A1:I1');
         $sheet->setCellValue('A1', $title);
@@ -48,7 +48,7 @@ class PayrollExportController extends Controller
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        // === DÒNG TIÊU ĐỀ CỘT ===
+        // === TIÊU ĐỀ CỘT ===
         $headers = ['Mã NV', 'Tên nhân viên', 'Tháng', 'Tổng giờ', 'Số ngày công', 'Tổng lương', 'Thưởng', 'Phạt', 'Lương cuối'];
         $sheet->fromArray([$headers], null, 'A2');
 
@@ -58,10 +58,10 @@ class PayrollExportController extends Controller
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ]);
 
-        // === DỮ LIỆU ===
+        // === DỮ LIỆU BẢNG ===
         $rows = $payrolls->map(function ($item) {
             return [
-                $item->employee->employee_code ?? '',
+                $item->employee->MaNV ?? $item->employee_id,  // ✅ Sửa chỗ này
                 $item->employee->name ?? '',
                 $item->month,
                 $item->total_hours,
@@ -80,10 +80,13 @@ class PayrollExportController extends Controller
         }
 
         $rowCount = $payrolls->count() + 2;
+
+        // Viền và căn giữa
         $sheet->getStyle("A3:I{$rowCount}")->applyFromArray([
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ]);
 
+        // Định dạng tiền tệ
         foreach (['F', 'G', 'H', 'I'] as $col) {
             $sheet->getStyle("{$col}3:{$col}{$rowCount}")
                 ->getNumberFormat()->setFormatCode('#,##0" đ"');
@@ -103,28 +106,42 @@ class PayrollExportController extends Controller
         ]);
     }
 
+
     public function exportPdf()
     {
         $monthInput = request('month');
         $yearInput = request('year');
 
+        // === XỬ LÝ CHUỖI THÁNG ===
         if ($monthInput && str_contains($monthInput, '-')) {
             $monthString = $monthInput;
         } else {
-            $month = str_pad($monthInput ?? now()->format('m'), 2, '0', STR_PAD_LEFT);
-            $year = $yearInput ?? now()->format('Y');
-            $monthString = "$year-$month";
+            $month = str_pad($monthInput ?? '', 2, '0', STR_PAD_LEFT);
+            $year = $yearInput;
+
+            // Nếu không có cả month & year thì lấy tháng mới nhất trong bảng payrolls
+            if (!$month || !$year) {
+                $latestPayroll = Payroll::orderBy('month', 'desc')->first();
+                if (!$latestPayroll) {
+                    return response()->json(['message' => 'Không có dữ liệu bảng lương nào trong hệ thống.'], 404);
+                }
+                $monthString = $latestPayroll->month;
+            } else {
+                $monthString = "$year-$month";
+            }
         }
 
-        $query = Payroll::with('employee')->where('month', 'like', "$monthString%");
-
-        $payrolls = $query->get();
+        // === TRUY VẤN DỮ LIỆU ===
+        $payrolls = Payroll::with('employee')
+            ->where('month', 'like', "$monthString%")
+            ->get();
 
         if ($payrolls->isEmpty()) {
             return response()->json(['message' => 'Không có dữ liệu bảng lương phù hợp.'], 404);
         }
 
-        $pdf = Pdf::loadView('exports.payroll', [
+        // === CHUẨN BỊ DỮ LIỆU VÀ TẠO PDF ===
+        $pdf = PDF::loadView('exports.payroll', [
             'payrolls' => $payrolls,
             'month' => substr($monthString, 5, 2),
             'year' => substr($monthString, 0, 4),
