@@ -20,9 +20,6 @@ class OvertimeRequestController extends Controller
         $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
     }
 
-    /**
-     * Lấy danh sách tất cả phiếu tăng ca (tuỳ chọn lọc theo ngày hoặc nhân viên)
-     */
     public function index(Request $request)
     {
         $query = OvertimeRequest::with('employee');
@@ -41,17 +38,14 @@ class OvertimeRequestController extends Controller
         ]);
     }
 
-    /**
-     * Tạo phiếu tăng ca mới
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
             'work_date' => 'required|date',
             'overtime_requests' => 'required|array',
             'overtime_requests.*.employee_id' => 'required|exists:employees,id',
-            'overtime_requests.*.start_time' => 'required|date_format:H:i',
-            'overtime_requests.*.end_time' => 'required|date_format:H:i', // Loại bỏ 'after'
+            'overtime_requests.*.start_datetime' => 'required|date_format:Y-m-d H:i',
+            'overtime_requests.*.end_datetime' => 'required|date_format:Y-m-d H:i|after:overtime_requests.*.start_datetime',
             'overtime_requests.*.reason' => 'nullable|string',
         ]);
 
@@ -64,29 +58,16 @@ class OvertimeRequestController extends Controller
 
         foreach ($requests as $req) {
             $employeeId = $req['employee_id'];
-            $startTime = $req['start_time'];
-            $endTime = $req['end_time'];
+            $startDateTime = Carbon::parse($req['start_datetime']);
+            $endDateTime = Carbon::parse($req['end_datetime']);
             $reason = $req['reason'] ?? null;
 
             $employee = Employee::find($employeeId);
             if (!$employee) {
-                $errorList[] = [
-                    'employee_id' => $employeeId,
-                    'reason' => 'Không tìm thấy nhân viên'
-                ];
+                $errorList[] = ['employee_id' => $employeeId, 'reason' => 'Không tìm thấy nhân viên'];
                 continue;
             }
 
-            // Tạo đối tượng thời gian đầy đủ
-            $startDateTime = Carbon::parse($workDate)->setTimeFromTimeString($startTime);
-            $endDateTime = Carbon::parse($workDate)->setTimeFromTimeString($endTime);
-
-            // Xử lý ca đêm: nếu end_time < start_time, thêm 1 ngày cho endDateTime
-            if ($endDateTime->lt($startDateTime)) {
-                $endDateTime->addDay();
-            }
-
-            // Kiểm tra tính hợp lệ của khoảng thời gian
             if ($startDateTime->lt($now) && $endDateTime->lt($now)) {
                 $errorList[] = [
                     'employee_id' => $employeeId,
@@ -95,15 +76,11 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Đếm số ca chính trong ngày work_date dựa trên WorkAssignment
             $mainShiftsCount = WorkAssignment::where('employee_id', $employeeId)
                 ->where('work_date', $workDate)
                 ->count();
 
-            // Tính số giờ tăng ca
             $otHours = $startDateTime->floatDiffInHours($endDateTime);
-
-            // Giới hạn giờ tăng ca
             $maxAllowed = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
 
             if ($otHours > $maxAllowed) {
@@ -124,7 +101,6 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Kiểm tra trùng với ca chính
             $hasMainShiftConflict = WorkAssignment::where('employee_id', $employeeId)
                 ->where('work_date', $workDate)
                 ->whereHas('shift', function ($q) use ($startDateTime, $endDateTime) {
@@ -142,18 +118,16 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Xoá đơn tăng ca cũ cùng ngày
             OvertimeRequest::where('employee_id', $employeeId)
                 ->where('work_date', $workDate)
                 ->delete();
 
-            // Kiểm tra trùng thời gian với các đơn tăng ca khác
             $hasOvertimeConflict = OvertimeRequest::where('employee_id', $employeeId)
                 ->where('work_date', $workDate)
                 ->where(function ($q) use ($startDateTime, $endDateTime) {
                     $q->where(function ($query) use ($startDateTime, $endDateTime) {
-                        $query->whereTime('start_time', '<', $endDateTime->toTimeString())
-                            ->whereTime('end_time', '>', $startDateTime->toTimeString());
+                        $query->whereTime('start_datetime', '<', $endDateTime->toTimeString())
+                            ->whereTime('end_datetime', '>', $startDateTime->toTimeString());
                     });
                 })->exists();
 
@@ -166,12 +140,11 @@ class OvertimeRequestController extends Controller
                 continue;
             }
 
-            // Lưu đơn tăng ca mới
             OvertimeRequest::create([
                 'employee_id' => $employeeId,
                 'work_date' => $workDate,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
+                'start_datetime' => $startDateTime,
+                'end_datetime' => $endDateTime,
                 'reason' => $reason,
             ]);
 
@@ -184,10 +157,7 @@ class OvertimeRequestController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Xử lý đăng ký tăng ca hoàn tất.',
-            'data' => [
-                'created' => $successList,
-                'errors' => $errorList
-            ]
+            'data' => ['created' => $successList, 'errors' => $errorList]
         ]);
     }
 }
