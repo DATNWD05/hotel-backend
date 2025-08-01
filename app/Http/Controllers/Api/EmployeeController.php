@@ -18,10 +18,10 @@ class EmployeeController extends Controller
 {
     use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(Employee::class, parameter: 'employees');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(Employee::class, parameter: 'employees');
+    // }
     public function index()
     {
         $data = Employee::with(['department', 'role', 'user'])->paginate(10);

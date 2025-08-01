@@ -12,10 +12,10 @@ class ShiftController extends Controller
 
     use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(Shift::class, 'shifts');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(Shift::class, 'shifts');
+    // }
 
     public function index()
     {
