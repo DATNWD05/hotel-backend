@@ -15,12 +15,10 @@ use App\Models\OvertimeRequest;
 
 class AttendanceController extends Controller
 {
-
     public function index(Request $request)
     {
         $query = Attendance::with(['employee', 'shift']);
 
-        //Lọc theo ngày
         if ($request->filled('from_date')) {
             $query->whereDate('work_date', '>=', $request->input('from_date'));
         }
@@ -28,7 +26,6 @@ class AttendanceController extends Controller
             $query->whereDate('work_date', '<=', $request->input('to_date'));
         }
 
-        //Lọc theo nhân viên
         if ($request->filled('employee_id')) {
             $query->where('employee_id', $request->input('employee_id'));
         }
@@ -36,7 +33,6 @@ class AttendanceController extends Controller
         $perPage = $request->input('per_page', 10);
         $attendances = $query->orderByDesc('work_date')->paginate($perPage);
 
-        // Định dạng dữ liệu trả về
         $data = $attendances->map(function ($attendance) {
             return [
                 'id' => $attendance->id,
@@ -82,7 +78,7 @@ class AttendanceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Không phát hiện được khuôn mặt. Vui lòng chụp chính diện, đủ sáng.',
-            ]);
+            ], 400);
         }
 
         $faces = EmployeeFace::with('employee')->get();
@@ -125,7 +121,7 @@ class AttendanceController extends Controller
 
                 $overtime = OvertimeRequest::where('employee_id', $employee->id)
                     ->where('work_date', $today)
-                    ->first();
+                    ->first(); // Bỏ kiểm tra status
 
                 $mainShiftsCount = $assignments->count();
 
@@ -147,9 +143,8 @@ class AttendanceController extends Controller
                 }
 
                 if (!$matchedSlot && $overtime) {
-                    $start = Carbon::createFromFormat('H:i', $overtime->start_time)->setDateFrom($now);
-                    $end = Carbon::createFromFormat('H:i', $overtime->end_time)->setDateFrom($now);
-                    if ($end->lessThan($start)) $end->addDay(); // Xử lý ca đêm
+                    $start = Carbon::parse($overtime->start_datetime)->setTimezone('Asia/Ho_Chi_Minh');
+                    $end = Carbon::parse($overtime->end_datetime)->setTimezone('Asia/Ho_Chi_Minh');
 
                     $maxOvertimeHours = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
                     $overtimeDuration = $start->floatDiffInHours($end);
@@ -195,8 +190,8 @@ class AttendanceController extends Controller
                     $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in)->setDateFrom($matchedSlot['start']);
                     $checkOut = $now;
 
-                    $actualMinutes = $checkIn->diffInMinutes($checkOut, false); // Tính khoảng cách chính xác, bao gồm qua ngày
-                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end'], false); // Tính khoảng cách chính xác
+                    $actualMinutes = $checkIn->diffInMinutes($checkOut, false);
+                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end'], false);
 
                     $workedMinutes = min($actualMinutes, $expectedMinutes);
                     $overtimeMinutes = max(0, $actualMinutes - $expectedMinutes);
@@ -211,7 +206,7 @@ class AttendanceController extends Controller
                     $attendance->update([
                         'check_out' => $checkOut->toTimeString(),
                         'worked_hours' => round($workedMinutes / 60, 2),
-                        'early_leave_minutes' => $matchedSlot['end']->diffInMinutes($checkOut, false) < 0 ? abs($matchedSlot['end']->diffInMinutes($checkOut)) : 0,
+                        'early_leave_minutes' => max(0, $matchedSlot['end']->diffInMinutes($checkOut, false)),
                         'overtime_hours' => round($overtimeMinutes / 60, 2),
                     ]);
 
@@ -248,6 +243,6 @@ class AttendanceController extends Controller
         return response()->json([
             'success' => false,
             'message' => 'Không nhận diện được khuôn mặt. Hãy thử lại với góc mặt rõ hơn.',
-        ]);
+        ], 400);
     }
 }
