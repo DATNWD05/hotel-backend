@@ -26,4 +26,11 @@ class Room extends Model
         return $this->belongsToMany(Booking::class, 'booking_room', 'room_id', 'booking_id')
             ->withTimestamps(); // nếu bảng trung gian có created_at và updated_at
     }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->withTrashed()
+            ->where($field ?? $this->getRouteKeyName(), $value)
+            ->firstOrFail();
+    }
 }
