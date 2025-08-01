@@ -15,87 +15,10 @@ use App\Models\OvertimeRequest;
 
 class AttendanceController extends Controller
 {
-    //API chấm công giờ vào
-    // public function checkIn(Request $request)
-    // {
-    //     $request->validate([
-    //         'employee_id' => 'required|exists:employees,id',
-    //         'shift_id' => 'required|exists:shifts,id',
-    //         'work_date' => 'required|date',
-    //     ]);
-
-    //     //Kiểm tra đã check-in chưa
-    //     $exists = Attendance::where('employee_id', $request->employee_id)
-    //         ->where('work_date', $request->work_date)
-    //         ->where('shift_id', $request->shift_id)
-    //         ->first();
-
-    //     if ($exists) {
-    //         return response()->json(['message' => 'Đã chấm công giờ vào cho ca này'], 400);
-    //     }
-
-    //     $checkInTime = now()->setTimezone('Asia/Ho_Chi_Minh')->format('H:i:s');
-
-    //     $attendance = Attendance::create([
-    //         'employee_id' => $request->employee_id,
-    //         'shift_id' => $request->shift_id,
-    //         'work_date' => $request->work_date,
-    //         'check_in' => $checkInTime,
-    //     ]);
-
-    //     return response()->json([
-    //         'message' => 'Chấm công giờ vào thành công',
-    //         'data' => $attendance
-    //     ]);
-    // }
-
-    //API chấm công giờ ra
-    // public function checkOut(Request $request)
-    // {
-    //     $request->validate([
-    //         'employee_id' => 'required|exists:employees,id',
-    //         'shift_id' => 'required|exists:shifts,id',
-    //         'work_date' => 'required|date',
-    //     ]);
-
-    //     $attendance = Attendance::where('employee_id', $request->employee_id)
-    //         ->where('shift_id', $request->shift_id)
-    //         ->where('work_date', $request->work_date)
-    //         ->first();
-
-    //     if (!$attendance) {
-    //         return response()->json(['message' => 'Chưa check-in, không thể check-out'], 400);
-    //     }
-
-    //     if ($attendance->check_out) {
-    //         return response()->json(['message' => 'Đã chấm công giờ ra'], 400);
-    //     }
-
-    //     try {
-    //         $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in);
-    //     } catch (\Exception $e) {
-    //         return response()->json(['message' => 'Định dạng check-in không hợp lệ'], 400);
-    //     }
-
-    //     $checkOut = now()->setTimezone('Asia/Ho_Chi_Minh');
-    //     $workedHours = $checkOut->diffInMinutes($checkIn) / 60;
-
-    //     $attendance->update([
-    //         'check_out' => $checkOut->format('H:i:s'),
-    //         'worked_hours' => round($workedHours, 2),
-    //     ]);
-
-    //     return response()->json([
-    //         'message' => 'Chấm công giờ ra thành công',
-    //         'data' => $attendance
-    //     ]);
-    // }
-
     public function index(Request $request)
     {
         $query = Attendance::with(['employee', 'shift']);
 
-        //Lọc theo ngày
         if ($request->filled('from_date')) {
             $query->whereDate('work_date', '>=', $request->input('from_date'));
         }
@@ -103,7 +26,6 @@ class AttendanceController extends Controller
             $query->whereDate('work_date', '<=', $request->input('to_date'));
         }
 
-        //Lọc theo nhân viên
         if ($request->filled('employee_id')) {
             $query->where('employee_id', $request->input('employee_id'));
         }
@@ -111,7 +33,6 @@ class AttendanceController extends Controller
         $perPage = $request->input('per_page', 10);
         $attendances = $query->orderByDesc('work_date')->paginate($perPage);
 
-        // Định dạng dữ liệu trả về
         $data = $attendances->map(function ($attendance) {
             return [
                 'id' => $attendance->id,
@@ -139,7 +60,6 @@ class AttendanceController extends Controller
         ]);
     }
 
-
     public function faceAttendance(Request $request)
     {
         $request->validate(['image' => 'required|string']);
@@ -158,7 +78,7 @@ class AttendanceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Không phát hiện được khuôn mặt. Vui lòng chụp chính diện, đủ sáng.',
-            ]);
+            ], 400);
         }
 
         $faces = EmployeeFace::with('employee')->get();
@@ -177,21 +97,34 @@ class AttendanceController extends Controller
 
             if ($compareResponse->successful() && ($compareResponse['confidence'] ?? 0) >= 85) {
                 $employee = $face->employee;
-                $now = now();
+                $now = now()->setTimezone('Asia/Ho_Chi_Minh');
                 $today = $now->toDateString();
 
-                // Lấy danh sách ca chính
+                if ($now->lt(Carbon::today())) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Không thể chấm công cho ngày đã qua.',
+                    ], 422);
+                }
+
                 $assignments = WorkAssignment::with('shift')
                     ->where('employee_id', $employee->id)
                     ->where('work_date', $today)
                     ->get();
 
-                // Lấy thông tin tăng ca nếu có
+                if ($assignments->count() > 2) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Số ca chính vượt quá giới hạn 2 ca/ngày.',
+                    ], 422);
+                }
+
                 $overtime = OvertimeRequest::where('employee_id', $employee->id)
                     ->where('work_date', $today)
-                    ->first();
+                    ->first(); // Bỏ kiểm tra status
 
-                // Dò thời gian hợp lệ checkin/check-out
+                $mainShiftsCount = $assignments->count();
+
                 $matchedSlot = null;
                 foreach ($assignments as $a) {
                     $start = Carbon::createFromFormat('H:i:s', $a->shift->start_time)->setDateFrom($now);
@@ -209,10 +142,19 @@ class AttendanceController extends Controller
                     }
                 }
 
-                // Nếu không có ca chính phù hợp thì kiểm tra tăng ca
                 if (!$matchedSlot && $overtime) {
-                    $start = Carbon::createFromFormat('H:i', $overtime->start_time)->setDateFrom($now);
-                    $end = Carbon::createFromFormat('H:i', $overtime->end_time)->setDateFrom($now);
+                    $start = Carbon::parse($overtime->start_datetime)->setTimezone('Asia/Ho_Chi_Minh');
+                    $end = Carbon::parse($overtime->end_datetime)->setTimezone('Asia/Ho_Chi_Minh');
+
+                    $maxOvertimeHours = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
+                    $overtimeDuration = $start->floatDiffInHours($end);
+
+                    if ($overtimeDuration > $maxOvertimeHours) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Thời gian tăng ca vượt quá giới hạn {$maxOvertimeHours} giờ.",
+                        ], 422);
+                    }
 
                     if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
                         $matchedSlot = [
@@ -231,10 +173,9 @@ class AttendanceController extends Controller
                     ]);
                 }
 
-                // Tìm hoặc tạo chấm công
                 $attendance = Attendance::where('employee_id', $employee->id)
                     ->where('work_date', $today)
-                    ->where('shift_id', $matchedSlot['shift_id']) // null cho tăng ca
+                    ->where('shift_id', $matchedSlot['shift_id'])
                     ->first();
 
                 if ($attendance && $attendance->check_out) {
@@ -249,11 +190,11 @@ class AttendanceController extends Controller
                     $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in)->setDateFrom($matchedSlot['start']);
                     $checkOut = $now;
 
-                    $actualMinutes = $checkIn->diffInMinutes($checkOut);
-                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end']);
+                    $actualMinutes = $checkIn->diffInMinutes($checkOut, false);
+                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end'], false);
 
                     $workedMinutes = min($actualMinutes, $expectedMinutes);
-                    $overtimeMinutes = max($actualMinutes - $expectedMinutes, 0);
+                    $overtimeMinutes = max(0, $actualMinutes - $expectedMinutes);
 
                     if ($workedMinutes < $expectedMinutes * 0.7) {
                         return response()->json([
@@ -264,9 +205,9 @@ class AttendanceController extends Controller
 
                     $attendance->update([
                         'check_out' => $checkOut->toTimeString(),
-                        'worked_hours' => round($workedMinutes / 30) * 0.5,
-                        'early_leave_minutes' => max(0, $matchedSlot['end']->diffInMinutes($checkOut, false) < 0 ? abs($matchedSlot['end']->diffInMinutes($checkOut)) : 0),
-                        'overtime_hours' => round($overtimeMinutes / 30) * 0.5,
+                        'worked_hours' => round($workedMinutes / 60, 2),
+                        'early_leave_minutes' => max(0, $matchedSlot['end']->diffInMinutes($checkOut, false)),
+                        'overtime_hours' => round($overtimeMinutes / 60, 2),
                     ]);
 
                     return response()->json([
@@ -302,6 +243,6 @@ class AttendanceController extends Controller
         return response()->json([
             'success' => false,
             'message' => 'Không nhận diện được khuôn mặt. Hãy thử lại với góc mặt rõ hơn.',
-        ]);
+        ], 400);
     }
 }

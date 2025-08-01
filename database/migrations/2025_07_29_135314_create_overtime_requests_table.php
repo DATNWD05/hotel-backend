@@ -10,10 +10,10 @@ return new class extends Migration {
         Schema::create('overtime_requests', function (Blueprint $table) {
             $table->id();
             $table->foreignId('employee_id')->constrained('employees')->onDelete('cascade');
-            $table->date('work_date'); // ngày làm thêm
-            $table->time('start_time'); // giờ bắt đầu tăng ca
-            $table->time('end_time');   // giờ kết thúc tăng ca
-            $table->text('reason')->nullable(); // lý do tăng ca
+            $table->date('work_date'); // Ngày làm thêm
+            $table->datetime('start_datetime')->nullable(); // Thời gian bắt đầu tăng ca đầy đủ
+            $table->datetime('end_datetime')->nullable();   // Thời gian kết thúc tăng ca đầy đủ
+            $table->text('reason')->nullable();            // Lý do tăng ca
             $table->timestamps();
         });
     }

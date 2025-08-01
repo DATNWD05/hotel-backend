@@ -322,7 +322,7 @@ class StatisticsController extends Controller
             ->join('booking_room', 'bookings.id', '=', 'booking_room.booking_id')
             ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
             ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
-            ->whereIn('bookings.status', ['Checked-in', 'Checked-out', 'Pending'])
+            ->whereIn('bookings.status', ['Checked-in', 'Checked-out', 'Pending', 'Canceled'])
             ->select(
                 'bookings.id as booking_code',
                 'customers.name as customer_name',
@@ -373,66 +373,30 @@ class StatisticsController extends Controller
         $perPage = $request->input('per_page', 10);
         $page = $request->input('page', 1);
 
-        // Main query (gồm tất cả dịch vụ)
+        // Main query (tổng hợp các dịch vụ giống nhau)
         $query = DB::table('booking_service')
             ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
             ->join('services', 'booking_service.service_id', '=', 'services.id')
             ->join('service_categories', 'services.category_id', '=', 'service_categories.id')
-            ->leftJoin('rooms', 'booking_service.room_id', '=', 'rooms.id')
-            ->leftJoin('room_types', 'rooms.room_type_id', '=', 'room_types.id')
             ->leftJoin('employees', 'bookings.created_by', '=', 'employees.id')
             ->where('bookings.status', 'Checked-out')
             ->select(
-                'booking_service.id',
-                'bookings.id as booking_code',
-                'booking_service.booking_id',
                 'services.name as service_name',
                 'service_categories.name as category_name',
-                'services.price',
-                'booking_service.quantity',
-                DB::raw('(booking_service.quantity * services.price) as total'),
-                'employees.name as employee_name',
-                'booking_service.created_at',
-                'rooms.room_number',
-                'room_types.name as room_type',
-                'booking_service.room_id',
-                DB::raw('CASE WHEN booking_service.room_id IS NULL THEN "Toàn bộ booking" ELSE "Theo phòng" END as service_scope')
+                DB::raw('SUM(booking_service.quantity) as total_quantity'),
+                DB::raw('SUM(booking_service.quantity * services.price) as total')
             )
-            ->orderBy('booking_service.created_at', 'desc');
+            ->groupBy('services.name', 'service_categories.name', 'services.price')
+            ->orderByDesc('total');
 
         // Lọc theo ngày nếu có
         $query = $this->applyDateFilter($query, $request, 'booking_service.created_at');
 
-        // Tổng số bản ghi
-        $total = $query->count();
+        // Tổng số bản ghi sau khi nhóm
+        $total = $query->get()->count(); // Đếm số lượng nhóm thay vì count trực tiếp
 
         // Phân trang
         $data = $query->forPage($page, $perPage)->get();
-
-        // Nếu dịch vụ là toàn bộ booking => gắn thêm danh sách các phòng
-        $bookingIds = $data->pluck('booking_id')->unique()->filter();
-        $roomsByBooking = DB::table('booking_room')
-            ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-            ->whereIn('booking_room.booking_id', $bookingIds)
-            ->select('booking_room.booking_id', 'rooms.id as room_id', 'rooms.room_number')
-            ->get()
-            ->groupBy('booking_id');
-
-        foreach ($data as $item) {
-            if (is_null($item->room_id)) {
-                $item->rooms = DB::table('booking_room')
-                    ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-                    ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
-                    ->where('booking_room.booking_id', $item->booking_id)
-                    ->select(
-                        'booking_room.booking_id',
-                        'rooms.id as room_id',
-                        'rooms.room_number',
-                        'room_types.name as room_type'
-                    )
-                    ->get();
-            }
-        }
 
         // Tổng tiền cho booking đã Check-out
         $summary = DB::table('booking_service')
