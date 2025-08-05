@@ -74,6 +74,7 @@ class BookingController extends Controller
 
         return response()->json(['booking' => $booking]);
     }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -94,8 +95,10 @@ class BookingController extends Controller
             'room_ids'               => 'required|array|min:1',
             'room_ids.*'             => 'required|exists:rooms,id',
 
-            'check_in_date'          => 'required|date|after_or_equal:today',
+            'check_in_date'          => 'required|date|after_or_equal:now',
             'check_out_date'         => 'required|date|after:check_in_date',
+
+            'is_hourly'              => 'nullable|boolean',
 
             'services'               => 'nullable|array',
             'services.*.service_id'  => 'required|exists:services,id',
@@ -108,18 +111,18 @@ class BookingController extends Controller
             'customer.date_of_birth.before_or_equal' => 'Khách hàng phải đủ 18 tuổi mới được đặt phòng.',
         ]);
 
+        $isHourly = $validated['is_hourly'] ?? false;
+
         foreach ($validated['room_ids'] as $roomId) {
             $conflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                 ->where('booking_room.room_id', $roomId)
                 ->whereIn('bookings.status', ['Pending', 'Confirmed'])
                 ->where(function ($query) use ($validated) {
-                    $query->whereBetween('bookings.check_in_date', [$validated['check_in_date'], $validated['check_out_date']])
-                        ->orWhereBetween('bookings.check_out_date', [$validated['check_in_date'], $validated['check_out_date']])
-                        ->orWhere(function ($q) use ($validated) {
-                            $q->where('bookings.check_in_date', '<=', $validated['check_in_date'])
-                                ->where('bookings.check_out_date', '>=', $validated['check_out_date']);
-                        });
+                    $query->where(function ($q) use ($validated) {
+                        $q->where('check_in_date', '<', $validated['check_out_date'])
+                            ->where('check_out_date', '>', $validated['check_in_date']);
+                    });
                 })
                 ->exists();
 
@@ -136,14 +139,20 @@ class BookingController extends Controller
         );
 
         $user = Auth::user();
-        $nights = Carbon::parse($validated['check_in_date'])->diffInDays($validated['check_out_date']);
+
+        $start = Carbon::parse($validated['check_in_date']);
+        $end   = Carbon::parse($validated['check_out_date']);
+        $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
 
         $roomTotal = 0;
-        $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $nights) {
-            $rate = $room->roomType->base_rate ?? 0;
-            $roomTotal += $rate * $nights;
+        $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $duration, $isHourly) {
+            $rate = $isHourly
+                ? ($room->roomType->hourly_rate ?? 0)
+                : ($room->roomType->base_rate ?? 0);
+            $roomTotal += $rate * $duration;
             return [$room->id => ['rate' => $rate]];
         });
+
 
         $serviceTotal = 0;
         $servicesData = collect($validated['services'] ?? [])->map(function ($srv) use (&$serviceTotal) {
@@ -184,6 +193,7 @@ class BookingController extends Controller
             'discount_amount' => $discount,
             'total_amount'    => null,
             'deposit_amount'  => $validated['deposit_amount'] ?? 0,
+            'is_hourly'       => $isHourly,
         ]);
 
         $booking->rooms()->attach($roomsData);
@@ -218,6 +228,7 @@ class BookingController extends Controller
             'service_total'  => $serviceTotal,
         ]);
     }
+
 
     public function update(Request $request, Booking $booking)
     {

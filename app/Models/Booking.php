@@ -17,6 +17,7 @@ class Booking extends Model
         'status',
         'check_in_date',
         'check_out_date',
+        'is_hourly',
         'check_in_at',
         'check_out_at',
         'raw_total',
@@ -70,11 +71,20 @@ class Booking extends Model
         // Load các quan hệ cần thiết nếu chưa có
         $this->loadMissing(['rooms.roomType', 'promotions']);
 
-        $nights = Carbon::parse($this->check_in_date)->diffInDays($this->check_out_date);
+        $checkIn  = Carbon::parse($this->check_in_date);
+        $checkOut = Carbon::parse($this->check_out_date);
+
+        // Xác định thời gian lưu trú: giờ hoặc đêm
+        $duration = $this->is_hourly
+            ? max(1, $checkIn->diffInHours($checkOut))
+            : max(1, $checkIn->diffInDays($checkOut));
 
         // Tính tổng tiền phòng
-        $roomTotal = $this->rooms->sum(function ($room) use ($nights) {
-            return ($room->roomType->base_rate ?? 0) * $nights;
+        $roomTotal = $this->rooms->sum(function ($room) use ($duration) {
+            $rate = $this->is_hourly
+                ? ($room->roomType->hourly_rate ?? 0)
+                : ($room->roomType->base_rate ?? 0);
+            return $rate * $duration;
         });
 
         // Tính tổng tiền dịch vụ từ bảng trung gian booking_service
@@ -83,6 +93,7 @@ class Booking extends Model
             ->where('booking_id', $this->id)
             ->sum(DB::raw('booking_service.quantity * services.price'));
 
+        // Tổng tiền trước khi giảm giá
         $raw = $roomTotal + $serviceTotal;
 
         // Tính khuyến mãi nếu có
