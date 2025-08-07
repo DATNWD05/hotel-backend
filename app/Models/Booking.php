@@ -24,21 +24,28 @@ class Booking extends Model
         'total_amount',
         'deposit_amount',
         'is_deposit_paid',
+        'is_hourly',
     ];
 
-    // Quan hệ khách hàng
+    /**
+     * Quan hệ với khách hàng
+     */
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
     }
 
-    // Nhân viên tạo đơn
+    /**
+     * Quan hệ với nhân viên tạo đơn
+     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    // Quan hệ nhiều phòng
+    /**
+     * Quan hệ với nhiều phòng
+     */
     public function rooms(): BelongsToMany
     {
         return $this->belongsToMany(Room::class, 'booking_room')
@@ -46,7 +53,9 @@ class Booking extends Model
             ->withTimestamps();
     }
 
-    // Dịch vụ đã đặt
+    /**
+     * Quan hệ với dịch vụ đã đặt
+     */
     public function services(): BelongsToMany
     {
         return $this->belongsToMany(Service::class, 'booking_service')
@@ -54,7 +63,9 @@ class Booking extends Model
             ->withTimestamps();
     }
 
-    // Khuyến mãi áp dụng
+    /**
+     * Quan hệ với khuyến mãi áp dụng
+     */
     public function promotions(): BelongsToMany
     {
         return $this->belongsToMany(Promotion::class, 'booking_promotions')
@@ -62,7 +73,9 @@ class Booking extends Model
             ->withTimestamps();
     }
 
-    // Hàm tính lại tổng tiền
+    /**
+     * Tính lại tổng tiền của đơn đặt phòng
+     */
     public function recalculateTotal(): void
     {
         try {
@@ -77,9 +90,13 @@ class Booking extends Model
 
             $checkIn = Carbon::parse($this->check_in_date);
             $checkOut = Carbon::parse($this->check_out_date);
-            $nights = $checkIn->diffInDays($checkOut);
 
-            if ($nights <= 0) {
+            // Tính thời gian lưu trú (theo giờ hoặc ngày)
+            $duration = $this->is_hourly
+                ? max(1, ceil($checkIn->diffInMinutes($checkOut) / 60)) // Tính theo giờ
+                : max(1, $checkIn->diffInDays($checkOut)); // Tính theo ngày
+
+            if ($duration <= 0) {
                 Log::warning('Booking ID: ' . $this->id . ' - Invalid date range: ' . $checkIn->toDateString() . ' to ' . $checkOut->toDateString());
                 return;
             }
@@ -87,12 +104,14 @@ class Booking extends Model
             // Tính tổng tiền phòng
             $roomTotal = 0;
             if ($this->rooms->isNotEmpty()) {
-                $roomTotal = $this->rooms->sum(function ($room) use ($nights) {
-                    $baseRate = $room->roomType?->base_rate ?? 0;
-                    if ($baseRate <= 0) {
-                        Log::warning('Booking ID: ' . $this->id . ' - Invalid base_rate for room ID: ' . $room->id);
+                $roomTotal = $this->rooms->sum(function ($room) use ($duration) {
+                    $rate = $this->is_hourly
+                        ? ($room->roomType?->hourly_rate ?? 0)
+                        : ($room->roomType?->base_rate ?? 0);
+                    if ($rate <= 0) {
+                        Log::warning('Booking ID: ' . $this->id . ' - Invalid rate for room ID: ' . $room->id);
                     }
-                    return $baseRate * $nights;
+                    return $rate * $duration;
                 });
             }
 
@@ -105,23 +124,25 @@ class Booking extends Model
                 $serviceTotal = $serviceQuery->sum(DB::raw('booking_service.quantity * services.price'));
             }
 
-            $raw = $roomTotal + $serviceTotal;
+            $rawTotal = $roomTotal + $serviceTotal;
 
             // Tính khuyến mãi nếu có
             $discount = 0;
             $promo = $this->promotions()->latest('pivot_applied_at')->first();
             if ($promo && method_exists($promo, 'isValid') && $promo->isValid()) {
                 $discount = $promo->discount_type === 'percent'
-                    ? min($raw * ($promo->discount_value / 100), $raw) // Đảm bảo discount không vượt raw
-                    : min($promo->discount_value, $raw);
+                    ? min($rawTotal * ($promo->discount_value / 100), $rawTotal) // Đảm bảo discount không vượt raw
+                    : min($promo->discount_value, $rawTotal);
             }
 
             // Cập nhật lại tổng tiền
             $this->forceFill([
-                'raw_total' => $raw,
+                'raw_total' => $rawTotal,
                 'discount_amount' => $discount,
-                'total_amount' => max(0, $raw - $discount), // Đảm bảo total_amount không âm
+                'total_amount' => max(0, $rawTotal - $discount), // Đảm bảo total_amount không âm
             ])->save();
+
+            Log::info('Booking ID: ' . $this->id . ' - Recalculated totals: raw_total=' . $rawTotal . ', discount_amount=' . $discount . ', total_amount=' . max(0, $rawTotal - $discount));
         } catch (\Exception $e) {
             Log::error('Error in recalculateTotal for Booking ID: ' . $this->id . ' - ' . $e->getMessage());
         }

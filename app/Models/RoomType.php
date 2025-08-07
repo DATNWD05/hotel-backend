@@ -8,17 +8,33 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RoomType extends Model
 {
+    /**
+     * Các trường có thể được gán giá trị hàng loạt.
+     *
+     * @var array
+     */
     protected $fillable = [
         'code',
         'name',
         'description',
         'max_occupancy',
         'base_rate',
-        'created_at',
+        'hourly_rate', // Thêm trường hourly_rate để hỗ trợ đặt phòng theo giờ
     ];
 
     /**
-     * Mối quan hệ 1-n: RoomType có nhiều Room
+     * Các trường được tự động cast thành kiểu dữ liệu cụ thể.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'max_occupancy' => 'integer',
+        'base_rate' => 'decimal:2',
+        'hourly_rate' => 'decimal:2', // Cast hourly_rate thành kiểu decimal với 2 chữ số thập phân
+    ];
+
+    /**
+     * Mối quan hệ 1-n: RoomType có nhiều Room.
      */
     public function rooms(): HasMany
     {
@@ -26,7 +42,7 @@ class RoomType extends Model
     }
 
     /**
-     * Mối quan hệ n-n: RoomType có nhiều Amenity (qua bảng trung gian room_type_amenities)
+     * Mối quan hệ n-n: RoomType có nhiều Amenity (qua bảng trung gian room_type_amenities).
      */
     public function amenities(): BelongsToMany
     {

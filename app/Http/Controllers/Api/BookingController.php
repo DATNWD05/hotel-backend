@@ -16,7 +16,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
@@ -30,7 +29,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Hiển thị danh sách tất cả các đơn đặt phòng.
+     * Display a listing of all bookings.
      */
     public function index()
     {
@@ -46,7 +45,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Hiển thị chi tiết một đơn đặt phòng.
+     * Display details of a specific booking.
      */
     public function show(Booking $booking)
     {
@@ -80,14 +79,14 @@ class BookingController extends Controller
     }
 
     /**
-     * Lấy danh sách phòng khả dụng dựa trên loại phòng và khoảng thời gian.
+     * Get available rooms based on room type and time range.
      */
     public function getAvailableRooms(Request $request)
     {
         $validated = $request->validate([
             'check_in_date' => 'required|date|after_or_equal:today',
             'check_out_date' => 'required|date|after:check_in_date',
-            'room_type_id' => 'sometimes|exists:room_types,id', // Tham số tùy chọn
+            'room_type_id' => 'sometimes|exists:room_types,id',
         ]);
 
         $query = Room::where('status', '!=', 'maintenance')
@@ -96,6 +95,15 @@ class BookingController extends Controller
             });
 
         $rooms = $query->get()->filter(function ($room) use ($validated) {
+            if ($validated['is_hourly'] ?? false) {
+                // Kiểm tra hourly_rate > 0 khi đặt theo giờ
+                $rate = $room->roomType->hourly_rate ?? 0;
+                if ($rate <= 0) return false;
+            } else {
+                $rate = $room->roomType->base_rate ?? 0;
+                if ($rate <= 0) return false;
+            }
+
             return !DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                 ->where('booking_room.room_id', $room->id)
@@ -124,7 +132,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Kiểm tra phòng khả dụng trước khi đặt.
+     * Validate room availability before booking.
      */
     public function validateRooms(Request $request)
     {
@@ -178,11 +186,11 @@ class BookingController extends Controller
     }
 
     /**
-     * Tạo mới một đơn đặt phòng.
+     * Create a new booking.
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'customer.cccd'          => 'required|string|max:20',
             'customer.name'          => 'required|string|max:100',
             'customer.gender'        => 'nullable|in:male,female,other',
@@ -196,60 +204,62 @@ class BookingController extends Controller
             'customer.nationality'   => 'required|string|max:255',
             'customer.address'       => 'nullable|string',
             'customer.note'          => 'nullable|string',
-
             'room_ids'               => 'required|array|min:1',
             'room_ids.*'             => 'required|exists:rooms,id',
-
             'check_in_date'          => 'required|date|after_or_equal:today',
             'check_out_date'         => 'required|date|after:check_in_date',
-
+            'is_hourly'              => 'nullable|boolean',
             'services'               => 'nullable|array',
             'services.*.service_id'  => 'required|exists:services,id',
             'services.*.quantity'    => 'required|integer|min:1',
             'services.*.room_id'     => 'nullable|exists:rooms,id',
-
             'promotion_code'         => 'nullable|string|exists:promotions,code',
             'deposit_amount'         => 'nullable|numeric|min:0',
         ], [
             'customer.date_of_birth.before_or_equal' => 'Khách hàng phải đủ 18 tuổi mới được đặt phòng.',
         ]);
 
-        return DB::transaction(function () use ($request, $validated) {
-            foreach ($validated['room_ids'] as $roomId) {
-                $conflict = DB::table('booking_room')
-                    ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
-                    ->where('booking_room.room_id', $roomId)
-                    ->whereIn('bookings.status', ['Pending', 'Confirmed', 'Checked-in'])
-                    ->where(function ($query) use ($validated) {
-                        $query->whereBetween('bookings.check_in_date', [$validated['check_in_date'], $validated['check_out_date']])
-                            ->orWhereBetween('bookings.check_out_date', [$validated['check_in_date'], $validated['check_out_date']])
-                            ->orWhere(function ($q) use ($validated) {
-                                $q->where('bookings.check_in_date', '<=', $validated['check_in_date'])
-                                    ->where('bookings.check_out_date', '>=', $validated['check_out_date']);
-                            });
-                    })
-                    ->exists();
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
-                if ($conflict) {
-                    throw new \Exception("Phòng ID {$roomId} đã được đặt trong thời gian này.", 422);
-                }
+        $validated = $validator->validated();
+        $isHourly = $validated['is_hourly'] ?? false;
+
+        return DB::transaction(function () use ($validated, $isHourly) {
+            // Validate room availability
+            $validationResponse = $this->validateRooms(
+                new Request([
+                    'room_ids' => $validated['room_ids'],
+                    'check_in_date' => $validated['check_in_date'],
+                    'check_out_date' => $validated['check_out_date'],
+                ])
+            );
+
+            if ($validationResponse->getStatusCode() !== 200) {
+                throw new \Exception($validationResponse->getContent(), 422);
             }
 
+            // Create or update customer
             $customer = Customer::updateOrCreate(
                 ['cccd' => $validated['customer']['cccd']],
                 $validated['customer']
             );
 
             $user = Auth::user();
-            $nights = Carbon::parse($validated['check_in_date'])->diffInDays($validated['check_out_date']);
+            $start = Carbon::parse($validated['check_in_date']);
+            $end = Carbon::parse($validated['check_out_date']);
+            $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
 
+            // Calculate room total
             $roomTotal = 0;
-            $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $nights) {
-                $rate = $room->roomType->base_rate ?? 0;
-                $roomTotal += $rate * $nights;
+            $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $duration, $isHourly) {
+                $rate = $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0);
+                $roomTotal += $rate * $duration;
                 return [$room->id => ['rate' => $rate]];
             });
 
+            // Calculate service total
             $serviceTotal = 0;
             $servicesData = collect($validated['services'] ?? [])->map(function ($srv) use (&$serviceTotal) {
                 $service = Service::findOrFail($srv['service_id']);
@@ -257,14 +267,16 @@ class BookingController extends Controller
                 $serviceTotal += $subtotal;
                 return [
                     'service_id' => $srv['service_id'],
-                    'quantity'   => $srv['quantity'],
-                    'room_id'    => $srv['room_id'] ?? null
+                    'quantity' => $srv['quantity'],
+                    'room_id' => $srv['room_id'] ?? null,
                 ];
             });
 
             $rawTotal = $roomTotal + $serviceTotal;
             $discount = 0;
             $promotion = null;
+
+            // Apply promotion if provided
             if (!empty($validated['promotion_code'])) {
                 $promotion = Promotion::where('code', $validated['promotion_code'])->first();
                 if ($promotion && $promotion->isValid()) {
@@ -279,31 +291,35 @@ class BookingController extends Controller
                 ? 'Confirmed'
                 : 'Pending';
 
+            // Create booking
             $booking = Booking::create([
-                'customer_id'     => $customer->id,
-                'created_by'      => $user->id,
-                'check_in_date'   => $validated['check_in_date'],
-                'check_out_date'  => $validated['check_out_date'],
-                'status'          => $status,
-                'raw_total'       => $rawTotal,
+                'customer_id' => $customer->id,
+                'created_by' => $user->id,
+                'check_in_date' => $validated['check_in_date'],
+                'check_out_date' => $validated['check_out_date'],
+                'status' => $status,
+                'raw_total' => $rawTotal,
                 'discount_amount' => $discount,
-                'total_amount'    => max(0, $rawTotal - $discount),
-                'deposit_amount'  => $validated['deposit_amount'] ?? 0,
+                'total_amount' => max(0, $rawTotal - $discount),
+                'deposit_amount' => $validated['deposit_amount'] ?? 0,
+                'is_hourly' => $isHourly,
             ]);
 
+            // Attach rooms and services
             $booking->rooms()->attach($roomsData);
-
             foreach ($servicesData as $service) {
                 $booking->services()->attach($service['service_id'], [
                     'quantity' => $service['quantity'],
-                    'room_id'  => $service['room_id'],
+                    'room_id' => $service['room_id'],
                 ]);
             }
 
+            // Update room status
             foreach ($booking->rooms as $room) {
                 $room->update(['status' => 'booked']);
             }
 
+            // Attach promotion if applicable
             if ($promotion) {
                 $booking->promotions()->attach($promotion->id, [
                     'promotion_code' => $promotion->code,
@@ -311,117 +327,122 @@ class BookingController extends Controller
                 ]);
             }
 
+            // Send deposit email if required
             if (!empty($validated['deposit_amount']) && $validated['deposit_amount'] > 0) {
                 $depositUrl = route('deposit.vnpay.create', ['booking_id' => $booking->id]);
                 Mail::to($customer->email)->send(new DepositLinkMail($booking, $depositUrl));
             }
 
             return response()->json([
-                'message'        => 'Đặt phòng thành công',
-                'data'           => $booking->load(['customer', 'rooms.roomType', 'services', 'promotions']),
-                'room_total'     => $roomTotal,
-                'service_total'  => $serviceTotal,
-            ]);
+                'message' => 'Đặt phòng thành công',
+                'data' => $booking->load(['customer', 'rooms.roomType', 'services', 'promotions']),
+                'room_total' => $roomTotal,
+                'service_total' => $serviceTotal,
+            ], 201);
         });
     }
 
     /**
-     * Cập nhật đơn đặt phòng.
+     * Update an existing booking.
      */
     public function update(Request $request, Booking $booking)
     {
-        $validated = $request->validate([
-            'customer.cccd'          => 'sometimes|string|max:20',
-            'customer.name'          => 'sometimes|string|max:100',
-            'customer.gender'        => 'sometimes|in:male,female,other',
-            'customer.email'         => 'sometimes|email',
-            'customer.phone'         => 'sometimes|string|max:20',
+        $validator = Validator::make($request->all(), [
+            'customer.cccd' => 'sometimes|string|max:20',
+            'customer.name' => 'sometimes|string|max:100',
+            'customer.gender' => 'sometimes|in:male,female,other',
+            'customer.email' => 'sometimes|email',
+            'customer.phone' => 'sometimes|string|max:20',
             'customer.date_of_birth' => ['sometimes', 'date', 'before_or_equal:' . now()->subYears(18)->toDateString()],
-            'customer.nationality'   => 'sometimes|string|max:100',
-            'customer.address'       => 'nullable|string',
-            'customer.note'          => 'nullable|string',
-
-            'room_ids'               => 'sometimes|array|min:1',
-            'room_ids.*'             => 'exists:rooms,id',
-
-            'check_in_date'          => 'sometimes|date|after_or_equal:today',
-            'check_out_date'         => 'sometimes|date|after:check_in_date',
-
-            'check_in_at'            => 'nullable|date',
-            'check_out_at'           => 'nullable|date|after_or_equal:check_in_at',
-
-            'services'               => 'nullable|array',
-            'services.*.service_id'  => 'required_with:services|exists:services,id',
-            'services.*.quantity'    => 'required_with:services|integer|min:1',
-            'services.*.room_id'     => 'nullable|exists:rooms,id',
-
-            'promotion_code'         => 'nullable|string|exists:promotions,code',
-            'deposit_amount'         => 'nullable|numeric|min:0',
+            'customer.nationality' => 'sometimes|string|max:100',
+            'customer.address' => 'nullable|string',
+            'customer.note' => 'nullable|string',
+            'room_ids' => 'sometimes|array|min:1',
+            'room_ids.*' => 'exists:rooms,id',
+            'check_in_date' => 'sometimes|date|after_or_equal:today',
+            'check_out_date' => 'sometimes|date|after:check_in_date',
+            'check_in_at' => 'nullable|date',
+            'check_out_at' => 'nullable|date|after_or_equal:check_in_at',
+            'is_hourly' => 'sometimes|boolean',
+            'services' => 'nullable|array',
+            'services.*.service_id' => 'required_with:services|exists:services,id',
+            'services.*.quantity' => 'required_with:services|integer|min:1',
+            'services.*.room_id' => 'nullable|exists:rooms,id',
+            'promotion_code' => 'nullable|string|exists:promotions,code',
+            'deposit_amount' => 'nullable|numeric|min:0',
+        ], [
+            'customer.date_of_birth.before_or_equal' => 'Khách hàng phải đủ 18 tuổi mới được đặt phòng.',
         ]);
 
-        return DB::transaction(function () use ($request, $validated, $booking) {
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $validated = $validator->validated();
+        $isHourly = $validated['is_hourly'] ?? $booking->is_hourly;
+
+        return DB::transaction(function () use ($request, $validated, $booking, $isHourly) {
+            // Validate room availability if rooms or dates are updated
             if ($request->hasAny(['room_ids', 'check_in_date', 'check_out_date'])) {
                 $newRoomIds = $validated['room_ids'] ?? $booking->rooms->pluck('id')->toArray();
                 $newCheckIn = $validated['check_in_date'] ?? $booking->check_in_date;
                 $newCheckOut = $validated['check_out_date'] ?? $booking->check_out_date;
 
-                foreach ($newRoomIds as $roomId) {
-                    $conflict = DB::table('booking_room')
-                        ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
-                        ->where('booking_room.room_id', $roomId)
-                        ->where('bookings.id', '!=', $booking->id)
-                        ->whereIn('bookings.status', ['Pending', 'Confirmed', 'Checked-in'])
-                        ->where(function ($query) use ($newCheckIn, $newCheckOut) {
-                            $query->whereBetween('bookings.check_in_date', [$newCheckIn, $newCheckOut])
-                                ->orWhereBetween('bookings.check_out_date', [$newCheckIn, $newCheckOut])
-                                ->orWhere(function ($q) use ($newCheckIn, $newCheckOut) {
-                                    $q->where('bookings.check_in_date', '<=', $newCheckIn)
-                                        ->where('bookings.check_out_date', '>=', $newCheckOut);
-                                });
-                        })
-                        ->exists();
+                $validationResponse = $this->validateRooms(
+                    new Request([
+                        'room_ids' => $newRoomIds,
+                        'check_in_date' => $newCheckIn,
+                        'check_out_date' => $newCheckOut,
+                    ])
+                );
 
-                    if ($conflict) {
-                        throw new \Exception("Phòng ID {$roomId} đã được đặt trong thời gian bạn chọn.", 422);
-                    }
+                if ($validationResponse->getStatusCode() !== 200) {
+                    throw new \Exception($validationResponse->getContent(), 422);
                 }
             }
 
+            // Update customer if provided
             if ($request->has('customer')) {
-                $customerData = $validated['customer'];
                 $customer = Customer::updateOrCreate(
-                    ['cccd' => $customerData['cccd']],
-                    $customerData
+                    ['cccd' => $validated['customer']['cccd']],
+                    $validated['customer']
                 );
                 $booking->customer_id = $customer->id;
             } else {
                 $customer = $booking->customer;
             }
 
+            // Update booking dates
             $booking->fill([
-                'check_in_date'  => $validated['check_in_date'] ?? $booking->check_in_date,
+                'check_in_date' => $validated['check_in_date'] ?? $booking->check_in_date,
                 'check_out_date' => $validated['check_out_date'] ?? $booking->check_out_date,
-                'check_in_at'    => $validated['check_in_at'] ?? $booking->check_in_at,
-                'check_out_at'   => $validated['check_out_at'] ?? $booking->check_out_at,
+                'check_in_at' => $validated['check_in_at'] ?? $booking->check_in_at,
+                'check_out_at' => $validated['check_out_at'] ?? $booking->check_out_at,
+                'is_hourly' => $isHourly,
             ]);
 
-            $nights = Carbon::parse($booking->check_in_date)->diffInDays($booking->check_out_date);
-            $roomTotal = 0;
+            $start = Carbon::parse($booking->check_in_date);
+            $end = Carbon::parse($booking->check_out_date);
+            $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
 
+            // Calculate room total
+            $roomTotal = 0;
             if ($request->has('room_ids')) {
                 $rooms = Room::with('roomType')->whereIn('id', $validated['room_ids'])->get();
-                $roomsData = $rooms->mapWithKeys(function ($room) use (&$roomTotal, $nights) {
-                    $rate = $room->roomType->base_rate ?? 0;
-                    $roomTotal += $rate * $nights;
+                $roomsData = $rooms->mapWithKeys(function ($room) use (&$roomTotal, $duration, $isHourly) {
+                    $rate = $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0);
+                    $roomTotal += $rate * $duration;
                     return [$room->id => ['rate' => $rate]];
                 });
                 $booking->rooms()->sync($roomsData);
             } else {
                 foreach ($booking->rooms as $room) {
-                    $roomTotal += ($room->roomType->base_rate ?? 0) * $nights;
+                    $rate = $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0);
+                    $roomTotal += $rate * $duration;
                 }
             }
 
+            // Calculate service total
             $serviceTotal = 0;
             if ($request->has('services')) {
                 $booking->services()->detach();
@@ -431,7 +452,7 @@ class BookingController extends Controller
                     $serviceTotal += $subtotal;
                     $booking->services()->attach($srv['service_id'], [
                         'quantity' => $srv['quantity'],
-                        'room_id'  => $srv['room_id'] ?? null
+                        'room_id' => $srv['room_id'] ?? null,
                     ]);
                 }
             } else {
@@ -441,8 +462,9 @@ class BookingController extends Controller
             }
 
             $rawTotal = $roomTotal + $serviceTotal;
-
             $discount = 0;
+
+            // Apply promotion if provided
             if ($request->has('promotion_code')) {
                 $promotion = Promotion::where('code', $validated['promotion_code'])->first();
                 if ($promotion && $promotion->isValid()) {
@@ -453,14 +475,15 @@ class BookingController extends Controller
                     $booking->promotions()->sync([
                         $promotion->id => [
                             'promotion_code' => $promotion->code,
-                            'applied_at'     => now(),
-                        ]
+                            'applied_at' => now(),
+                        ],
                     ]);
                 }
             } else {
                 $booking->promotions()->detach();
             }
 
+            // Update booking status
             if (!empty($validated['check_in_at'])) {
                 $booking->status = 'Checked-in';
             } elseif ($request->has('deposit_amount') && $validated['deposit_amount'] > 0) {
@@ -473,6 +496,7 @@ class BookingController extends Controller
                 $booking->status = 'Checked-out';
             }
 
+            // Handle deposit changes
             $oldDeposit = $booking->deposit_amount;
             if ($request->has('deposit_amount')) {
                 $newDeposit = $validated['deposit_amount'];
@@ -483,6 +507,7 @@ class BookingController extends Controller
                 $booking->deposit_amount = $newDeposit;
             }
 
+            // Update totals
             $booking->raw_total = $rawTotal;
             $booking->discount_amount = $discount;
             $booking->total_amount = max(0, $rawTotal - $discount);
@@ -496,22 +521,28 @@ class BookingController extends Controller
     }
 
     /**
-     * Thêm dịch vụ vào đơn đặt phòng.
+     * Add services to a booking.
      */
     public function addServices(Request $request, Booking $booking)
     {
         if ($booking->status === 'Checked-out') {
             return response()->json([
-                'message' => 'Không thể thêm dịch vụ vì đơn đặt phòng đã được checkout.'
+                'message' => 'Không thể thêm dịch vụ vì đơn đặt phòng đã được checkout.',
             ], 422);
         }
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'services' => 'required|array|min:1',
-            'services.*.room_id'    => 'nullable|exists:rooms,id',
+            'services.*.room_id' => 'nullable|exists:rooms,id',
             'services.*.service_id' => 'required|exists:services,id',
-            'services.*.quantity'   => 'required|integer|min:1',
+            'services.*.quantity' => 'required|integer|min:1',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $validated = $validator->validated();
 
         return DB::transaction(function () use ($validated, $booking) {
             $booking->load(['services', 'rooms']);
@@ -542,7 +573,7 @@ class BookingController extends Controller
                         ->where('id', $existing->id)
                         ->update([
                             'quantity' => $existing->quantity + $quantity,
-                            'updated_at' => now()
+                            'updated_at' => now(),
                         ]);
                 } else {
                     DB::table('booking_service')->insert([
@@ -551,7 +582,7 @@ class BookingController extends Controller
                         'service_id' => $serviceId,
                         'quantity' => $quantity,
                         'created_at' => now(),
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]);
                 }
             }
@@ -560,13 +591,13 @@ class BookingController extends Controller
 
             return response()->json([
                 'message' => 'Thêm dịch vụ thành công',
-                'data' => $booking->load(['services'])
+                'data' => $booking->load(['services']),
             ]);
         });
     }
 
     /**
-     * Hiển thị thông tin check-in.
+     * Display check-in information.
      */
     public function showCheckInInfo(Booking $booking)
     {
@@ -575,7 +606,7 @@ class BookingController extends Controller
             'creator',
             'rooms.roomType.amenities',
             'services',
-            'promotions'
+            'promotions',
         ]);
 
         return response()->json([
@@ -609,10 +640,10 @@ class BookingController extends Controller
                             return [
                                 'name' => $amenity->name,
                                 'icon' => $amenity->icon,
-                                'quantity' => $amenity->pivot->quantity ?? 1
+                                'quantity' => $amenity->pivot->quantity ?? 1,
                             ];
-                        })
-                    ]
+                        }),
+                    ],
                 ];
             }),
             'services' => $booking->services->map(function ($service) {
@@ -620,21 +651,21 @@ class BookingController extends Controller
                     'name' => $service->name,
                     'description' => $service->description,
                     'price' => $service->price,
-                    'quantity' => $service->pivot->quantity
+                    'quantity' => $service->pivot->quantity,
                 ];
             }),
-            'created_by' => $booking->creator->name ?? null
+            'created_by' => $booking->creator->name ?? null,
         ]);
     }
 
     /**
-     * Thực hiện check-in.
+     * Perform check-in for a booking.
      */
     public function checkIn(Booking $booking)
     {
         if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
             return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
+                'error' => 'Booking hiện không ở trạng thái cho phép check-in',
             ], 400);
         }
 
@@ -654,24 +685,20 @@ class BookingController extends Controller
                 'check_in_at' => $booking->check_in_at,
                 'rooms' => $booking->rooms->map(fn($room) => [
                     'room_number' => $room->room_number,
-                    'status' => $room->status
-                ])
+                    'status' => $room->status,
+                ]),
             ]);
         });
     }
 
     /**
-     * Hiển thị thông tin trước khi check-out.
+     * Display checkout information.
      */
     public function checkOut(Booking $booking)
     {
         $booking->load(['rooms.roomType', 'services']);
 
-        try {
-            $totals = $this->calculateBookingTotals($booking);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
-        }
+        $totals = $this->calculateBookingTotals($booking);
 
         return response()->json([
             'message' => 'Thông tin trước khi thực hiện checkout',
@@ -688,13 +715,13 @@ class BookingController extends Controller
     }
 
     /**
-     * Hủy đơn đặt phòng.
+     * Cancel a booking.
      */
     public function cancel(Booking $booking)
     {
         if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
             return response()->json([
-                'error' => 'Không thể hủy đơn đã nhận phòng hoặc đã trả phòng!'
+                'error' => 'Không thể hủy đơn đã nhận phòng hoặc đã trả phòng!',
             ], 400);
         }
 
@@ -709,13 +736,13 @@ class BookingController extends Controller
             return response()->json([
                 'message' => 'Hủy đơn đặt phòng thành công!',
                 'booking_id' => $booking->id,
-                'status' => $booking->status
+                'status' => $booking->status,
             ]);
         });
     }
 
     /**
-     * Thanh toán bằng tiền mặt và check-out.
+     * Process cash payment and checkout.
      */
     public function payByCash(Booking $booking)
     {
@@ -782,7 +809,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Tính toán tổng chi phí của đơn đặt phòng.
+     * Calculate booking totals.
      */
     private function calculateBookingTotals(Booking $booking)
     {
@@ -793,13 +820,13 @@ class BookingController extends Controller
             throw new \Exception('Ngày check-out không hợp lệ (trước ngày check-in)');
         }
 
-        $nights = $checkIn->diffInDays($checkOut);
+        $duration = $booking->is_hourly ? max(1, ceil($checkIn->diffInMinutes($checkOut) / 60)) : max(1, $checkIn->diffInDays($checkOut));
         $roomTotal = 0;
         $roomDetails = [];
 
         foreach ($booking->rooms as $room) {
-            $rate = floatval(optional($room->roomType)->base_rate ?? 0);
-            $total = $rate * $nights;
+            $rate = floatval($booking->is_hourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0));
+            $total = $rate * $duration;
             $roomTotal += $total;
 
             $roomDetails[] = [
@@ -824,7 +851,7 @@ class BookingController extends Controller
         $finalTotal = $isDepositPaid ? max(0, $totalAmount - $depositAmount) : $totalAmount;
 
         return [
-            'nights' => $nights,
+            'nights' => $duration,
             'room_details' => $roomDetails,
             'room_total' => $roomTotal,
             'service_total' => $serviceTotal,
@@ -837,14 +864,20 @@ class BookingController extends Controller
     }
 
     /**
-     * Xóa dịch vụ khỏi đơn đặt phòng.
+     * Remove a service from a booking.
      */
     public function removeService(Request $request, Booking $booking)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'service_id' => 'required|exists:services,id',
-            'room_id'    => 'nullable|exists:rooms,id',
+            'room_id' => 'nullable|exists:rooms,id',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $validated = $validator->validated();
 
         return DB::transaction(function () use ($validated, $booking) {
             $booking->load('rooms');
@@ -869,21 +902,27 @@ class BookingController extends Controller
 
             return response()->json([
                 'message' => 'Xóa dịch vụ thành công',
-                'data' => $booking->load('services')
+                'data' => $booking->load('services'),
             ]);
         });
     }
 
     /**
-     * Thanh toán đặt cọc.
+     * Process deposit payment.
      */
     public function payDeposit(Request $request, Booking $booking)
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'amount' => 'required|numeric|min:0',
             'method' => 'required|in:cash,transfer',
-            'transaction_code' => 'nullable|string|max:100'
+            'transaction_code' => 'nullable|string|max:100',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $validated = $validator->validated();
 
         if ($booking->is_deposit_paid) {
             return response()->json(['message' => 'Đặt cọc đã được thanh toán trước đó.'], 422);
@@ -903,12 +942,12 @@ class BookingController extends Controller
             $booking->update([
                 'deposit_amount' => $validated['amount'],
                 'is_deposit_paid' => true,
-                'status' => 'Confirmed'
+                'status' => 'Confirmed',
             ]);
 
             return response()->json([
                 'message' => 'Xác nhận thanh toán đặt cọc thành công',
-                'booking_id' => $booking->id
+                'booking_id' => $booking->id,
             ]);
         });
     }

@@ -66,4 +66,11 @@ class Room extends Model
             return false; // Trả về false nếu có lỗi để an toàn
         }
     }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->withTrashed()
+            ->where($field ?? $this->getRouteKeyName(), $value)
+            ->firstOrFail();
+    }
 }

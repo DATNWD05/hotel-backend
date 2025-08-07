@@ -19,6 +19,9 @@ class RoomTypeController extends Controller
         $this->authorizeResource(RoomType::class, 'room_type');
     }
 
+    /**
+     * Lấy danh sách tất cả loại phòng.
+     */
     public function index()
     {
         $types = RoomType::with('amenities')->get();
@@ -29,12 +32,18 @@ class RoomTypeController extends Controller
         ]);
     }
 
+    /**
+     * Tạo mới một loại phòng.
+     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name'       => 'required|string|max:255|unique:room_types,name',
-            'description' => 'nullable|string',
-            'base_rate'  => 'required|numeric|min:0',
+            'code'         => 'required|string|max:20|unique:room_types,code',
+            'name'         => 'required|string|max:255|unique:room_types,name',
+            'description'  => 'nullable|string',
+            'max_occupancy' => 'required|integer|min:0|max:255',
+            'base_rate'    => 'required|numeric|min:0',
+            'hourly_rate'  => 'required|numeric|min:0', // Thêm validation cho hourly_rate
         ]);
 
         if ($validator->fails()) {
@@ -46,6 +55,8 @@ class RoomTypeController extends Controller
 
         try {
             $roomType = RoomType::create($validator->validated());
+            $roomType->load('amenities'); // Load amenities sau khi tạo
+
             return response()->json([
                 'message' => 'Tạo loại phòng thành công.',
                 'data'    => $roomType
@@ -59,6 +70,9 @@ class RoomTypeController extends Controller
         }
     }
 
+    /**
+     * Hiển thị thông tin một loại phòng.
+     */
     public function show(RoomType $room_type)
     {
         $room_type->load('amenities');
@@ -69,12 +83,18 @@ class RoomTypeController extends Controller
         ]);
     }
 
+    /**
+     * Cập nhật thông tin một loại phòng.
+     */
     public function update(Request $request, RoomType $room_type)
     {
         $validator = Validator::make($request->all(), [
-            'name'        => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
-            'description' => 'nullable|string',
-            'base_rate'   => 'required|numeric|min:0',
+            'code'         => 'required|string|max:20|unique:room_types,code,' . $room_type->id,
+            'name'         => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
+            'description'  => 'nullable|string',
+            'max_occupancy' => 'required|integer|min:0|max:255',
+            'base_rate'    => 'required|numeric|min:0',
+            'hourly_rate'  => 'required|numeric|min:0', // Thêm validation cho hourly_rate
         ]);
 
         if ($validator->fails()) {
@@ -86,6 +106,8 @@ class RoomTypeController extends Controller
 
         try {
             $room_type->update($validator->validated());
+            $room_type->load('amenities'); // Load amenities sau khi cập nhật
+
             return response()->json([
                 'message' => 'Cập nhật loại phòng thành công.',
                 'data'    => $room_type
@@ -99,12 +121,15 @@ class RoomTypeController extends Controller
         }
     }
 
+    /**
+     * Xóa một loại phòng.
+     */
     public function destroy(RoomType $room_type)
     {
         try {
             $room_type->delete();
             return response()->json([
-                'message' => 'Loại phòng đã được xóa mềm.'
+                'message' => 'Loại phòng đã được xóa.'
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -114,47 +139,9 @@ class RoomTypeController extends Controller
         }
     }
 
-    public function trashed()
-    {
-        $trashed = RoomType::onlyTrashed()->get();
-
-        return response()->json([
-            'message' => 'Danh sách loại phòng đã xóa.',
-            'data'    => $trashed
-        ]);
-    }
-
-    public function restore($id)
-    {
-        $roomType = RoomType::withTrashed()->find($id);
-        if (!$roomType || !$roomType->trashed()) {
-            return response()->json([
-                'message' => 'Loại phòng không tồn tại hoặc chưa bị xóa.'
-            ], 404);
-        }
-
-        $roomType->restore();
-        return response()->json([
-            'message' => 'Khôi phục loại phòng thành công.',
-            'data'    => $roomType
-        ]);
-    }
-
-    public function forceDelete($id)
-    {
-        $roomType = RoomType::withTrashed()->find($id);
-        if (!$roomType || !$roomType->trashed()) {
-            return response()->json([
-                'message' => 'Không thể xóa vĩnh viễn loại phòng chưa bị xóa mềm.'
-            ], 400);
-        }
-
-        $roomType->forceDelete();
-        return response()->json([
-            'message' => 'Đã xóa vĩnh viễn loại phòng.'
-        ]);
-    }
-
+    /**
+     * Đồng bộ danh sách amenities cho loại phòng.
+     */
     public function syncAmenities(Request $request, RoomType $room_type)
     {
         try {
