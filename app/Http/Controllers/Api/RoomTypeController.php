@@ -32,9 +32,11 @@ class RoomTypeController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name'       => 'required|string|max:255|unique:room_types,name',
-            'description' => 'nullable|string',
-            'base_rate'  => 'required|numeric|min:0',
+            'code'         => 'required|string|max:20|unique:room_types,code',
+            'name'         => 'required|string|max:255|unique:room_types,name',
+            'description'  => 'nullable|string',
+            'max_occupancy' => 'required|integer|min:0|max:255',
+            'base_rate'    => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -72,9 +74,11 @@ class RoomTypeController extends Controller
     public function update(Request $request, RoomType $room_type)
     {
         $validator = Validator::make($request->all(), [
-            'name'        => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
-            'description' => 'nullable|string',
-            'base_rate'   => 'required|numeric|min:0',
+            'code'         => 'required|string|max:20|unique:room_types,code,' . $room_type->id,
+            'name'         => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
+            'description'  => 'nullable|string',
+            'max_occupancy' => 'required|integer|min:0|max:255',
+            'base_rate'    => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -104,7 +108,7 @@ class RoomTypeController extends Controller
         try {
             $room_type->delete();
             return response()->json([
-                'message' => 'Loại phòng đã được xóa mềm.'
+                'message' => 'Loại phòng đã được xóa.'
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -114,46 +118,46 @@ class RoomTypeController extends Controller
         }
     }
 
-    public function trashed()
-    {
-        $trashed = RoomType::onlyTrashed()->get();
+    // public function trashed()
+    // {
+    //     $trashed = RoomType::onlyTrashed()->get();
 
-        return response()->json([
-            'message' => 'Danh sách loại phòng đã xóa.',
-            'data'    => $trashed
-        ]);
-    }
+    //     return response()->json([
+    //         'message' => 'Danh sách loại phòng đã xóa.',
+    //         'data'    => $trashed
+    //     ]);
+    // }
 
-    public function restore($id)
-    {
-        $roomType = RoomType::withTrashed()->find($id);
-        if (!$roomType || !$roomType->trashed()) {
-            return response()->json([
-                'message' => 'Loại phòng không tồn tại hoặc chưa bị xóa.'
-            ], 404);
-        }
+    // public function restore($id)
+    // {
+    //     $roomType = RoomType::withTrashed()->find($id);
+    //     if (!$roomType || !$roomType->trashed()) {
+    //         return response()->json([
+    //             'message' => 'Loại phòng không tồn tại hoặc chưa bị xóa.'
+    //         ], 404);
+    //     }
 
-        $roomType->restore();
-        return response()->json([
-            'message' => 'Khôi phục loại phòng thành công.',
-            'data'    => $roomType
-        ]);
-    }
+    //     $roomType->restore();
+    //     return response()->json([
+    //         'message' => 'Khôi phục loại phòng thành công.',
+    //         'data'    => $roomType
+    //     ]);
+    // }
 
-    public function forceDelete($id)
-    {
-        $roomType = RoomType::withTrashed()->find($id);
-        if (!$roomType || !$roomType->trashed()) {
-            return response()->json([
-                'message' => 'Không thể xóa vĩnh viễn loại phòng chưa bị xóa mềm.'
-            ], 400);
-        }
+    // public function forceDelete($id)
+    // {
+    //     $roomType = RoomType::withTrashed()->find($id);
+    //     if (!$roomType || !$roomType->trashed()) {
+    //         return response()->json([
+    //             'message' => 'Không thể xóa vĩnh viễn loại phòng chưa bị xóa mềm.'
+    //         ], 400);
+    //     }
 
-        $roomType->forceDelete();
-        return response()->json([
-            'message' => 'Đã xóa vĩnh viễn loại phòng.'
-        ]);
-    }
+    //     $roomType->forceDelete();
+    //     return response()->json([
+    //         'message' => 'Đã xóa vĩnh viễn loại phòng.'
+    //     ]);
+    // }
 
     public function syncAmenities(Request $request, RoomType $room_type)
     {

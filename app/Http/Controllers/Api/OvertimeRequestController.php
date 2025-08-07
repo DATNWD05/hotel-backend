@@ -4,15 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\OvertimeRequest;
+use App\Models\WorkAssignment;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use App\Models\WorkAssignment;
-use App\Models\Attendance;
-use App\Models\Employee;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
 
 class OvertimeRequestController extends Controller
 {
+
     use AuthorizesRequests;
 
     // public function __construct()
@@ -44,8 +46,10 @@ class OvertimeRequestController extends Controller
             'work_date' => 'required|date',
             'overtime_requests' => 'required|array',
             'overtime_requests.*.employee_id' => 'required|exists:employees,id',
-            'overtime_requests.*.start_datetime' => 'required|date_format:Y-m-d H:i',
-            'overtime_requests.*.end_datetime' => 'required|date_format:Y-m-d H:i|after:overtime_requests.*.start_datetime',
+            'overtime_requests.*.overtime_type' => 'required|in:after_shift,custom',
+            'overtime_requests.*.duration' => 'required_if:overtime_requests.*.overtime_type,after_shift|integer|min:1|max:6',
+            'overtime_requests.*.start_datetime' => 'required_if:overtime_requests.*.overtime_type,custom|date_format:Y-m-d H:i',
+            'overtime_requests.*.end_datetime' => 'required_if:overtime_requests.*.overtime_type,custom|date_format:Y-m-d H:i|after:overtime_requests.*.start_datetime',
             'overtime_requests.*.reason' => 'nullable|string',
         ]);
 
@@ -56,108 +60,158 @@ class OvertimeRequestController extends Controller
         $successList = [];
         $errorList = [];
 
-        foreach ($requests as $req) {
-            $employeeId = $req['employee_id'];
-            $startDateTime = Carbon::parse($req['start_datetime']);
-            $endDateTime = Carbon::parse($req['end_datetime']);
-            $reason = $req['reason'] ?? null;
+        DB::beginTransaction();
+        try {
+            foreach ($requests as $req) {
+                $employeeId = $req['employee_id'];
+                $employee = Employee::find($employeeId);
 
-            $employee = Employee::find($employeeId);
-            if (!$employee) {
-                $errorList[] = ['employee_id' => $employeeId, 'reason' => 'Không tìm thấy nhân viên'];
-                continue;
-            }
+                if (!$employee) {
+                    $errorList[] = ['employee_id' => $employeeId, 'reason' => 'Không tìm thấy nhân viên'];
+                    continue;
+                }
 
-            if ($startDateTime->lt($now) && $endDateTime->lt($now)) {
-                $errorList[] = [
+                // Không cho đăng ký cho ngày đã qua
+                if ($workDate->lt($now->startOfDay())) {
+                    $errorList[] = [
+                        'employee_id' => $employeeId,
+                        'employee_name' => $employee->name,
+                        'reason' => 'Không thể đăng ký tăng ca cho ngày đã qua'
+                    ];
+                    continue;
+                }
+
+                // Xóa OT cũ trong ngày để đảm bảo 1 bản ghi / ngày
+                OvertimeRequest::where('employee_id', $employeeId)
+                    ->where('work_date', $workDate)
+                    ->delete();
+
+                // Đếm số ca chính để tính giới hạn OT
+                $mainShiftsCount = WorkAssignment::where('employee_id', $employeeId)
+                    ->where('work_date', $workDate)
+                    ->count();
+
+                $maxAllowed = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
+
+                if ($maxAllowed === 0) {
+                    $errorList[] = [
+                        'employee_id' => $employeeId,
+                        'employee_name' => $employee->name,
+                        'reason' => 'Nhân viên đã làm đủ 2 ca, không được tăng ca'
+                    ];
+                    continue;
+                }
+
+                $startDatetime = null;
+                $endDatetime = null;
+
+                if ($req['overtime_type'] === 'after_shift') {
+                    // Lấy ca chính cuối cùng trong ngày
+                    $lastShift = WorkAssignment::join('shifts', 'work_assignments.shift_id', '=', 'shifts.id')
+                        ->where('work_assignments.employee_id', $employeeId)
+                        ->where('work_assignments.work_date', $workDate)
+                        ->orderByDesc('shifts.end_time')
+                        ->select('work_assignments.*', 'shifts.end_time')
+                        ->first();
+
+                    if (!$lastShift) {
+                        $errorList[] = [
+                            'employee_id' => $employeeId,
+                            'employee_name' => $employee->name,
+                            'reason' => 'Không có ca chính để tăng ca'
+                        ];
+                        continue;
+                    }
+
+                    // Tính start_datetime và end_datetime
+                    $startDatetime = Carbon::parse($workDate->format('Y-m-d') . ' ' . $lastShift->end_time);
+                    $endDatetime = $startDatetime->copy()->addHours($req['duration']);
+
+                    // Validate thời gian đã qua
+                    if ($endDatetime->lt($now)) {
+                        $errorList[] = [
+                            'employee_id' => $employeeId,
+                            'employee_name' => $employee->name,
+                            'reason' => 'Thời gian tăng ca đã qua'
+                        ];
+                        continue;
+                    }
+                } else {
+                    // Custom giờ OT
+                    $startDatetime = Carbon::parse($req['start_datetime']);
+                    $endDatetime = Carbon::parse($req['end_datetime']);
+
+                    if ($startDatetime->lt($now) && $endDatetime->lt($now)) {
+                        $errorList[] = [
+                            'employee_id' => $employeeId,
+                            'employee_name' => $employee->name,
+                            'reason' => 'Khoảng thời gian đã qua: ' . $startDatetime->format('H:i') . '-' . $endDatetime->format('H:i')
+                        ];
+                        continue;
+                    }
+                }
+
+                // Kiểm tra giới hạn số giờ OT
+                $otHours = $startDatetime->floatDiffInHours($endDatetime);
+                if ($otHours > $maxAllowed) {
+                    $errorList[] = [
+                        'employee_id' => $employeeId,
+                        'employee_name' => $employee->name,
+                        'reason' => "Tăng ca $otHours tiếng, vượt giới hạn tối đa $maxAllowed tiếng"
+                    ];
+                    continue;
+                }
+
+                // Check trùng ca chính
+                $hasMainShiftConflict = WorkAssignment::where('employee_id', $employeeId)
+                    ->where('work_date', $workDate)
+                    ->whereHas('shift', function ($q) use ($startDatetime, $endDatetime) {
+                        $q->whereTime('start_time', '<', $endDatetime->toTimeString())
+                            ->whereTime('end_time', '>', $startDatetime->toTimeString());
+                    })
+                    ->exists();
+
+                if ($hasMainShiftConflict) {
+                    $errorList[] = [
+                        'employee_id' => $employeeId,
+                        'employee_name' => $employee->name,
+                        'reason' => 'Thời gian tăng ca trùng với ca chính'
+                    ];
+                    continue;
+                }
+
+                // Tạo đơn OT
+                OvertimeRequest::create([
                     'employee_id' => $employeeId,
-                    'reason' => 'Khoảng thời gian tăng ca đã hoàn toàn qua: ' . $startDateTime->toDateTimeString() . ' - ' . $endDateTime->toDateTimeString()
-                ];
-                continue;
-            }
+                    'overtime_type' => $req['overtime_type'],
+                    'work_date' => $workDate,
+                    'start_datetime' => $startDatetime,
+                    'end_datetime' => $endDatetime,
+                    'reason' => $req['reason'] ?? null,
+                ]);
 
-            $mainShiftsCount = WorkAssignment::where('employee_id', $employeeId)
-                ->where('work_date', $workDate)
-                ->count();
-
-            $otHours = $startDateTime->floatDiffInHours($endDateTime);
-            $maxAllowed = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
-
-            if ($otHours > $maxAllowed) {
-                $errorList[] = [
+                $successList[] = [
                     'employee_id' => $employeeId,
-                    'employee_name' => $employee->name,
-                    'reason' => "Tăng ca {$otHours} tiếng, vượt giới hạn tối đa {$maxAllowed} tiếng (đã được phân công {$mainShiftsCount} ca)"
+                    'employee_name' => $employee->name
                 ];
-                continue;
             }
 
-            if ($maxAllowed === 0) {
-                $errorList[] = [
-                    'employee_id' => $employeeId,
-                    'employee_name' => $employee->name,
-                    'reason' => 'Đã được phân công đủ 2 ca chính, không được tăng ca'
-                ];
-                continue;
-            }
+            DB::commit();
 
-            $hasMainShiftConflict = WorkAssignment::where('employee_id', $employeeId)
-                ->where('work_date', $workDate)
-                ->whereHas('shift', function ($q) use ($startDateTime, $endDateTime) {
-                    $q->whereTime('start_time', '<', $endDateTime->toTimeString())
-                        ->whereTime('end_time', '>', $startDateTime->toTimeString());
-                })
-                ->exists();
-
-            if ($hasMainShiftConflict) {
-                $errorList[] = [
-                    'employee_id' => $employeeId,
-                    'employee_name' => $employee->name,
-                    'reason' => 'Thời gian tăng ca trùng với ca chính đã được phân công'
-                ];
-                continue;
-            }
-
-            OvertimeRequest::where('employee_id', $employeeId)
-                ->where('work_date', $workDate)
-                ->delete();
-
-            $hasOvertimeConflict = OvertimeRequest::where('employee_id', $employeeId)
-                ->where('work_date', $workDate)
-                ->where(function ($q) use ($startDateTime, $endDateTime) {
-                    $q->where(function ($query) use ($startDateTime, $endDateTime) {
-                        $query->whereTime('start_datetime', '<', $endDateTime->toTimeString())
-                            ->whereTime('end_datetime', '>', $startDateTime->toTimeString());
-                    });
-                })->exists();
-
-            if ($hasOvertimeConflict) {
-                $errorList[] = [
-                    'employee_id' => $employeeId,
-                    'employee_name' => $employee->name,
-                    'reason' => 'Thời gian trùng với đơn tăng ca khác'
-                ];
-                continue;
-            }
-
-            OvertimeRequest::create([
-                'employee_id' => $employeeId,
-                'work_date' => $workDate,
-                'start_datetime' => $startDateTime,
-                'end_datetime' => $endDateTime,
-                'reason' => $reason,
+            return response()->json([
+                'success' => true,
+                'message' => 'Xử lý đăng ký tăng ca hoàn tất.',
+                'data' => [
+                    'created' => $successList,
+                    'errors' => $errorList
+                ]
             ]);
-
-            $successList[] = [
-                'employee_id' => $employeeId,
-                'employee_name' => $employee->name,
-            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Xử lý đăng ký tăng ca hoàn tất.',
-            'data' => ['created' => $successList, 'errors' => $errorList]
-        ]);
     }
 }

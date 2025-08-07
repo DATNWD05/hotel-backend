@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 
 <head>
     <meta charset="UTF-8">
@@ -8,6 +8,11 @@
         body {
             font-family: DejaVu Sans, sans-serif;
             font-size: 12px;
+        }
+
+        h2 {
+            text-align: center;
+            margin-top: 10px;
         }
 
         table {
@@ -19,22 +24,20 @@
         th,
         td {
             border: 1px solid #000;
-            padding: 6px;
+            padding: 6px 8px;
             text-align: center;
         }
 
         th {
             background-color: #f0f0f0;
-        }
-
-        h2 {
-            text-align: center;
+            font-weight: bold;
         }
     </style>
 </head>
 
 <body>
-    <h2>Bảng Lương Tháng {{ $month }}/{{ $year }}</h2>
+    <h2>BẢNG LƯƠNG NHÂN VIÊN THÁNG {{ str_pad($month, 2, '0', STR_PAD_LEFT) }}/{{ $year }}</h2>
+
     <table>
         <thead>
             <tr>
@@ -51,14 +54,14 @@
         <tbody>
             @foreach ($payrolls as $p)
                 <tr>
-                    <td>{{ $p->employee->employee_code ?? '' }}</td>
-                    <td>{{ $p->employee->name ?? '' }}</td>
-                    <td>{{ $p->total_hours }}</td>
-                    <td>{{ $p->total_days }}</td>
-                    <td>{{ number_format($p->total_salary, 0, ',', '.') }} đ</td>
-                    <td>{{ number_format($p->bonus, 0, ',', '.') }} đ</td>
-                    <td>{{ number_format($p->penalty, 0, ',', '.') }} đ</td>
-                    <td>{{ number_format($p->final_salary, 0, ',', '.') }} đ</td>
+                    <td>{{ $p->employee->MaNV ?? '-' }}</td>
+                    <td>{{ $p->employee->name ?? '-' }}</td>
+                    <td>{{ $p->total_hours ?? 0 }}</td>
+                    <td>{{ $p->total_days ?? 0 }}</td>
+                    <td>{{ number_format($p->total_salary ?? 0, 0, ',', '.') }} đ</td>
+                    <td>{{ number_format($p->bonus ?? 0, 0, ',', '.') }} đ</td>
+                    <td>{{ number_format($p->penalty ?? 0, 0, ',', '.') }} đ</td>
+                    <td>{{ number_format($p->final_salary ?? 0, 0, ',', '.') }} đ</td>
                 </tr>
             @endforeach
         </tbody>
