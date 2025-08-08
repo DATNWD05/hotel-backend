@@ -148,6 +148,7 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
     Route::prefix('overtime-requests')->group(function () {
         Route::get('/', [OvertimeRequestController::class, 'index']);
         Route::post('/', [OvertimeRequestController::class, 'store']);
+        Route::delete('/by-date', [OvertimeRequestController::class, 'deleteByDate']);
     });
 });
 
