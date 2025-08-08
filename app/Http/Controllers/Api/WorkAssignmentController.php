@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class WorkAssignmentController extends Controller
 {
 
-    // use AuthorizesRequests;
+    use AuthorizesRequests;
 
     // public function __construct()
     // {
