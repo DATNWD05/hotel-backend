@@ -14,12 +14,12 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class OvertimeRequestController extends Controller
 {
 
-    // use AuthorizesRequests;
+    use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
+    }
 
     public function index(Request $request)
     {
