@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use App\Imports\WorkAssignmentImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use App\Models\Employee;
 
 class WorkAssignmentController extends Controller
 {
@@ -24,7 +25,7 @@ class WorkAssignmentController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $assignments = WorkAssignment::with(['employee', 'shift'])
+        $assignments = WorkAssignment::with(['employee', 'shift', 'user.role'])
             ->orderByDesc('work_date')
             ->paginate($perPage);
 
@@ -56,6 +57,17 @@ class WorkAssignmentController extends Controller
             $employeeId = $assignment['employee_id'];
             $date = $assignment['work_date'];
             $newShiftIds = $assignment['shift_ids'] ?? [];
+
+            // Kiểm tra trạng thái nhân viên
+            $employee = Employee::find($employeeId);
+            if (!$employee || strtolower($employee->status) !== 'active') {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date' => $date,
+                    'reason' => 'Nhân viên đã nghỉ việc hoặc không hoạt động'
+                ];
+                continue;
+            }
 
             // Không cho phép phân công ngược ngày
             if ($date < $today) {
