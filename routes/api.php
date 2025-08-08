@@ -160,6 +160,10 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::post('/bookings/{booking}/add-services', [BookingController::class, 'addServices']);
     Route::post('/bookings/{booking}/deposit', [BookingController::class, 'payDeposit']);
 
+    //Check phòng trống
+    Route::get('/available-rooms', [RoomController::class, 'getAvailableRooms']);
+    Route::post('/bookings/validate-rooms', [BookingController::class, 'validateRooms']);
+
 
     // xử lí trạng thái bookings
     Route::get('/check-in/{booking}', [BookingController::class, 'showCheckInInfo']);
