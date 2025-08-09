@@ -78,53 +78,56 @@ class BookingController extends Controller
     public function getAvailableRooms(Request $request)
     {
         $validated = $request->validate([
-            'check_in_date' => 'required|date|after_or_equal:now',
+            'check_in_date'  => 'required|date|after_or_equal:now',
             'check_out_date' => 'required|date|after:check_in_date',
-            'room_type_id' => 'sometimes|exists:room_types,id',
-            'is_hourly' => 'nullable|boolean',
+            'room_type_id'   => 'nullable|exists:room_types,id',
+            'is_hourly'      => 'nullable|boolean',
         ]);
 
-        $isHourly = $validated['is_hourly'] ?? false;
+        $isHourly = (bool)($validated['is_hourly'] ?? false);
 
-        $checkIn = Carbon::parse($validated['check_in_date']);
+        $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
-        $query = Room::where('status', '!=', 'maintenance')
-            ->when($validated['room_type_id'] ?? null, function ($q) use ($validated) {
-                return $q->where('room_type_id', $validated['room_type_id']);
-            });
+        // Nếu là đặt theo giờ, không cho đặt sau 20h
+        if ($isHourly && $checkIn->hour >= 20) {
+            return response()->json([
+                'message' => 'Không thể đặt phòng theo giờ sau 20h.'
+            ], 422);
+        }
 
-        $rooms = $query->get()->filter(function ($room) use ($validated, $checkIn, $checkOut, $isHourly) {
-            // Kiểm tra rate hợp lệ
+        $query = Room::query();
+        if (!empty($validated['room_type_id'])) {
+            $query->where('room_type_id', $validated['room_type_id']);
+        }
+
+        $rooms = $query->get()->filter(function ($room) use ($checkIn, $checkOut, $isHourly) {
             $rate = $isHourly
                 ? ($room->roomType->hourly_rate ?? 0)
                 : ($room->roomType->base_rate ?? 0);
 
             if ($rate <= 0) return false;
 
-            // Kiểm tra trùng thời gian đặt
-            $conflict = DB::table('booking_room')
+            $hasConflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                 ->where('booking_room.room_id', $room->id)
                 ->whereIn('bookings.status', ['Pending', 'Confirmed', 'Checked-in'])
-                ->where(function ($query) use ($checkIn, $checkOut) {
-                    $query->where(function ($q) use ($checkIn, $checkOut) {
-                        $q->where('bookings.check_in_date', '<', $checkOut)
-                            ->where('bookings.check_out_date', '>', $checkIn);
-                    });
+                ->where(function ($q) use ($checkIn, $checkOut) {
+                    $q->where('bookings.check_in_date', '<', $checkOut)
+                        ->where('bookings.check_out_date', '>', $checkIn);
                 })
                 ->exists();
 
-            return !$conflict;
+            return !$hasConflict;
         });
 
         return response()->json([
             'data' => $rooms->values()->map(function ($room) {
                 return [
-                    'id' => $room->id,
-                    'room_number' => $room->room_number,
-                    'status' => $room->status,
+                    'id'           => $room->id,
+                    'room_number'  => $room->room_number,
                     'room_type_id' => $room->room_type_id,
+                    'available'    => true,
                 ];
             }),
         ]);
