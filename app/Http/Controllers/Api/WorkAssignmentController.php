@@ -25,7 +25,7 @@ class WorkAssignmentController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $assignments = WorkAssignment::with(['employee', 'shift', 'user.role'])
+        $assignments = WorkAssignment::with(['employee.user.role', 'shift'])
             ->orderByDesc('work_date')
             ->paginate($perPage);
 
