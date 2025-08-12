@@ -78,16 +78,17 @@ class BookingController extends Controller
     public function getAvailableRooms(Request $request)
     {
         $validated = $request->validate([
-            'check_in_date' => 'required|date|after_or_equal:now',
+            'check_in_date'  => 'required|date|after_or_equal:now',
             'check_out_date' => 'required|date|after:check_in_date',
-            'room_type_id' => 'sometimes|exists:room_types,id',
-            'is_hourly' => 'nullable|boolean',
+            'room_type_id'   => 'nullable|exists:room_types,id',
+            'is_hourly'      => 'nullable|boolean',
         ]);
 
-        $isHourly = $validated['is_hourly'] ?? false;
+        $isHourly = (bool)($validated['is_hourly'] ?? false);
 
-        $checkIn = Carbon::parse($validated['check_in_date']);
+        $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
+
 
         // Nếu là đặt theo giờ, không cho đặt sau 20h (20:00)
         if ($isHourly && $checkIn->hour >= 20) {
@@ -102,7 +103,6 @@ class BookingController extends Controller
         if (!empty($validated['room_type_id'])) {
             $query->where('room_type_id', $validated['room_type_id']);
         }
-
         $rooms = $query->get()->filter(function ($room) use ($checkIn, $checkOut, $isHourly) {
             $rate = $isHourly
                 ? ($room->roomType->hourly_rate ?? 0)
@@ -110,11 +110,13 @@ class BookingController extends Controller
 
             if ($rate <= 0) return false;
 
+
             // Kiểm tra xem phòng có bị trùng thời gian đặt không
             $hasConflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                 ->where('booking_room.room_id', $room->id)
                 ->whereIn('bookings.status', ['Pending', 'Confirmed', 'Checked-in'])
+
                 ->where(function ($query) use ($checkIn, $checkOut) {
                     $query->where('bookings.check_in_date', '<', $checkOut)
                         ->where('bookings.check_out_date', '>', $checkIn);
@@ -127,10 +129,10 @@ class BookingController extends Controller
         return response()->json([
             'data' => $rooms->values()->map(function ($room) {
                 return [
-                    'id' => $room->id,
-                    'room_number' => $room->room_number,
+                    'id'           => $room->id,
+                    'room_number'  => $room->room_number,
                     'room_type_id' => $room->room_type_id,
-                    'available' => true, // ✅ rõ ràng đây là phòng đang còn trống
+                    'available'    => true,
                 ];
             }),
         ]);
