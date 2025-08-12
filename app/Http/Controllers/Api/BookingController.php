@@ -23,10 +23,10 @@ class BookingController extends Controller
 {
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(Booking::class, 'booking');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(Booking::class, 'booking');
+    }
     /**
      * Hiển thị danh sách tất cả các đơn đặt phòng.
      */
@@ -89,18 +89,20 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
-        // Nếu là đặt theo giờ, không cho đặt sau 20h
+
+        // Nếu là đặt theo giờ, không cho đặt sau 20h (20:00)
         if ($isHourly && $checkIn->hour >= 20) {
             return response()->json([
-                'message' => 'Không thể đặt phòng theo giờ sau 20h.'
+                'message' => 'Không thể đặt phòng theo giờ sau 20h.',
             ], 422);
         }
 
         $query = Room::query();
+
+        // Nếu lọc theo loại phòng
         if (!empty($validated['room_type_id'])) {
             $query->where('room_type_id', $validated['room_type_id']);
         }
-
         $rooms = $query->get()->filter(function ($room) use ($checkIn, $checkOut, $isHourly) {
             $rate = $isHourly
                 ? ($room->roomType->hourly_rate ?? 0)
@@ -108,12 +110,15 @@ class BookingController extends Controller
 
             if ($rate <= 0) return false;
 
+
+            // Kiểm tra xem phòng có bị trùng thời gian đặt không
             $hasConflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                 ->where('booking_room.room_id', $room->id)
                 ->whereIn('bookings.status', ['Pending', 'Confirmed', 'Checked-in'])
-                ->where(function ($q) use ($checkIn, $checkOut) {
-                    $q->where('bookings.check_in_date', '<', $checkOut)
+
+                ->where(function ($query) use ($checkIn, $checkOut) {
+                    $query->where('bookings.check_in_date', '<', $checkOut)
                         ->where('bookings.check_out_date', '>', $checkIn);
                 })
                 ->exists();
@@ -701,16 +706,27 @@ class BookingController extends Controller
      */
     public function checkIn(Booking $booking)
     {
-        if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
+        if ($booking->status !== 'Confirmed') {
             return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
+                'error' => 'Chỉ các booking đã được xác nhận mới được check-in.'
+            ], 400);
+        }
+
+        $now = now();
+
+        // Giả sử booking có trường 'start_time' chứa thời gian bắt đầu dự kiến
+        $allowedLateCheckIn = $booking->start_time->copy()->addHours(2);
+
+        if ($now->greaterThan($allowedLateCheckIn)) {
+            return response()->json([
+                'error' => 'Đã quá thời gian cho phép check-in trễ.'
             ], 400);
         }
 
         DB::beginTransaction();
         try {
             $booking->status = 'Checked-in';
-            $booking->check_in_at = now();
+            $booking->check_in_at = $now;
             $booking->save();
 
             foreach ($booking->rooms as $room) {
@@ -737,6 +753,7 @@ class BookingController extends Controller
             ], 500);
         }
     }
+
 
     public function checkOut(Booking $booking)
     {
