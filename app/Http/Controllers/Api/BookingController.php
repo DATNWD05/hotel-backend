@@ -18,15 +18,16 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class BookingController extends Controller
 {
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(Booking::class, 'booking');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(Booking::class, 'booking');
+    }
     /**
      * Hiển thị danh sách tất cả các đơn đặt phòng.
      */
@@ -89,10 +90,22 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
-        // Nếu là đặt theo giờ, không cho đặt sau 20h
-        if ($isHourly && $checkIn->hour >= 20) {
+        // ✅ Nếu đặt theo giờ thì ngày check-in và check-out phải cùng ngày
+        if ($isHourly && !$checkIn->isSameDay($checkOut)) {
             return response()->json([
-                'message' => 'Không thể đặt phòng theo giờ sau 20h.'
+                'message' => 'Đặt phòng theo giờ yêu cầu check-in và check-out trong cùng một ngày.',
+            ], 422);
+        }
+
+        if ($checkIn->hour >= 20) {
+            return response()->json([
+                'message' => 'Sau 20h chỉ nhận đặt qua đêm, không áp dụng đặt theo giờ.',
+            ], 422);
+        }
+
+        if ($checkOut->hour >= 20) {
+            return response()->json([
+                'message' => 'Sau 20h chỉ nhận đặt qua đêm, không áp dụng đặt theo giờ.',
             ], 422);
         }
 
@@ -203,6 +216,7 @@ class BookingController extends Controller
             'customer.nationality'   => 'required|string|max:255',
             'customer.address'       => 'nullable|string',
             'customer.note'          => 'nullable|string',
+            'customer.cccd_image'    => 'nullable|image|mimes:jpeg,png,jpg|max:5120', // ảnh tối đa 5MB
 
             'room_ids'               => 'required|array|min:1',
             'room_ids.*'             => 'required|exists:rooms,id',
@@ -229,27 +243,31 @@ class BookingController extends Controller
         $checkOut = Carbon::parse($validated['check_out_date']);
 
         if ($isHourly) {
-            // Nếu giờ check-in sau 20h thì không cho đặt theo giờ nữa
+            // Kiểm tra giờ đặt phòng
             if ($checkIn->hour >= 20) {
                 return response()->json([
                     'message' => 'Không thể đặt phòng theo giờ sau 20h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
                 ], 422);
             }
+            // Kiểm tra ngày phải trùng nhau
+            if (!$checkIn->isSameDay($checkOut)) {
+                return response()->json([
+                    'message' => 'Đặt phòng theo giờ phải có ngày check-in và check-out trùng nhau.',
+                ], 422);
+            }
         } else {
-            // Nếu không khác ngày thì không đủ điều kiện "1 đêm"
             if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
                 return response()->json([
                     'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm (qua ngày hôm sau).',
                 ], 422);
             }
-
-            // Check-out phải đúng 12h trưa
             if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
                 return response()->json([
                     'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
                 ], 422);
             }
         }
+
 
         foreach ($validated['room_ids'] as $roomId) {
             $conflict = DB::table('booking_room')
@@ -271,13 +289,18 @@ class BookingController extends Controller
             }
         }
 
+        // Xử lý lưu ảnh CCCD
+        if ($request->hasFile('customer.cccd_image')) {
+            $path = $request->file('customer.cccd_image')->store('cccd_images', 'public');
+            $validated['customer']['cccd_image_path'] = $path;
+        }
+
         $customer = Customer::updateOrCreate(
             ['cccd' => $validated['customer']['cccd']],
             $validated['customer']
         );
 
         $user = Auth::user();
-
         $start = Carbon::parse($validated['check_in_date']);
         $end   = Carbon::parse($validated['check_out_date']);
         $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
@@ -290,7 +313,6 @@ class BookingController extends Controller
             $roomTotal += $rate * $duration;
             return [$room->id => ['rate' => $rate]];
         });
-
 
         $serviceTotal = 0;
         $servicesData = collect($validated['services'] ?? [])->map(function ($srv) use (&$serviceTotal) {
@@ -380,6 +402,7 @@ class BookingController extends Controller
             'customer.nationality'   => 'sometimes|string|max:100',
             'customer.address'       => 'nullable|string',
             'customer.note'          => 'nullable|string',
+            'customer.cccd_image'    => 'nullable|image|mimes:jpeg,png,jpg|max:5120',
 
             'room_ids'               => 'sometimes|array|min:1',
             'room_ids.*'             => 'exists:rooms,id',
@@ -401,31 +424,51 @@ class BookingController extends Controller
             'is_hourly'              => 'nullable|boolean',
         ]);
 
-        // Kiểm tra trùng phòng nếu đổi phòng hoặc ngày/giờ
-        if ($request->hasAny(['room_ids', 'check_in_date', 'check_out_date'])) {
-            $newRoomIds  = $validated['room_ids'] ?? $booking->rooms->pluck('id')->toArray();
-            $newCheckIn  = $validated['check_in_date'] ?? $booking->check_in_date;
-            $newCheckOut = $validated['check_out_date'] ?? $booking->check_out_date;
-            $isHourly    = $validated['is_hourly'] ?? $booking->is_hourly ?? false;
+        $isHourly = $validated['is_hourly'] ?? $booking->is_hourly ?? false;
 
+        $newCheckIn  = $validated['check_in_date'] ?? $booking->check_in_date;
+        $newCheckOut = $validated['check_out_date'] ?? $booking->check_out_date;
+
+        $checkIn  = Carbon::parse($newCheckIn);
+        $checkOut = Carbon::parse($newCheckOut);
+
+        // Kiểm tra quy tắc đặt phòng giống store
+        if ($isHourly) {
+            if ($checkIn->hour >= 20) {
+                return response()->json([
+                    'message' => 'Không thể đặt phòng theo giờ sau 20h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
+                ], 422);
+            }
+            if (!$checkIn->isSameDay($checkOut)) {
+                return response()->json([
+                    'message' => 'Đặt phòng theo giờ phải có ngày check-in và check-out trùng nhau.',
+                ], 422);
+            }
+        } else {
+            if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
+                return response()->json([
+                    'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm.',
+                ], 422);
+            }
+            if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
+                return response()->json([
+                    'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
+                ], 422);
+            }
+        }
+
+        // Kiểm tra trùng phòng nếu đổi phòng hoặc ngày/giờ
+        if ($request->hasAny(['room_ids', 'check_in_date', 'check_out_date', 'is_hourly'])) {
+            $newRoomIds = $validated['room_ids'] ?? $booking->rooms->pluck('id')->toArray();
             foreach ($newRoomIds as $roomId) {
                 $conflict = DB::table('booking_room')
                     ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
                     ->where('booking_room.room_id', $roomId)
                     ->where('bookings.id', '!=', $booking->id)
                     ->whereIn('bookings.status', ['Pending', 'Confirmed'])
-                    ->where(function ($query) use ($newCheckIn, $newCheckOut, $isHourly) {
-                        $query->where(function ($q) use ($newCheckIn, $newCheckOut, $isHourly) {
-                            if ($isHourly) {
-                                // So sánh theo datetime
-                                $q->where('check_in_date', '<', $newCheckOut)
-                                    ->where('check_out_date', '>', $newCheckIn);
-                            } else {
-                                // So sánh theo ngày
-                                $q->whereDate('check_in_date', '<', date('Y-m-d', strtotime($newCheckOut)))
-                                    ->whereDate('check_out_date', '>', date('Y-m-d', strtotime($newCheckIn)));
-                            }
-                        });
+                    ->where(function ($query) use ($checkIn, $checkOut) {
+                        $query->where('check_in_date', '<', $checkOut)
+                            ->where('check_out_date', '>', $checkIn);
                     })
                     ->exists();
 
@@ -437,13 +480,20 @@ class BookingController extends Controller
             }
         }
 
-
-
-        // Cập nhật khách hàng nếu có
+        // Cập nhật khách hàng
         if ($request->has('customer')) {
             $customerData = $validated['customer'];
+
+            // Xử lý upload ảnh CCCD nếu có
+            if ($request->hasFile('customer.cccd_image')) {
+                if (!empty($booking->customer->cccd_image_path)) {
+                    Storage::disk('public')->delete($booking->customer->cccd_image_path);
+                }
+                $customerData['cccd_image_path'] = $request->file('customer.cccd_image')->store('cccd_images', 'public');
+            }
+
             $customer = Customer::updateOrCreate(
-                ['cccd' => $customerData['cccd']],
+                ['cccd' => $customerData['cccd'] ?? $booking->customer->cccd],
                 $customerData
             );
             $booking->customer_id = $customer->id;
@@ -451,43 +501,41 @@ class BookingController extends Controller
             $customer = $booking->customer;
         }
 
-        // Cập nhật các trường ngày & is_hourly
+        // Cập nhật thông tin booking cơ bản
         $booking->fill([
-            'check_in_date'  => $validated['check_in_date'] ?? $booking->check_in_date,
-            'check_out_date' => $validated['check_out_date'] ?? $booking->check_out_date,
+            'check_in_date'  => $newCheckIn,
+            'check_out_date' => $newCheckOut,
             'check_in_at'    => $validated['check_in_at'] ?? $booking->check_in_at,
             'check_out_at'   => $validated['check_out_at'] ?? $booking->check_out_at,
-            'is_hourly'      => $validated['is_hourly'] ?? $booking->is_hourly,
-        ])->save();
+            'is_hourly'      => $isHourly,
+        ]);
 
-        $start    = Carbon::parse($booking->check_in_date);
-        $end      = Carbon::parse($booking->check_out_date);
-        $isHourly = $booking->is_hourly;
-        $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
-
-        $roomTotal = 0;
+        // Tính thời gian lưu trú
+        $duration = $isHourly ? max(1, ceil($checkIn->diffInMinutes($checkOut) / 60)) : max(1, $checkIn->diffInDays($checkOut));
 
         // Cập nhật phòng
+        $roomTotal = 0;
         if ($request->has('room_ids')) {
-            $rooms = Room::with('roomType')->whereIn('id', $validated['room_ids'])->get();
+            $oldRoomIds = $booking->rooms->pluck('id')->toArray();
+            Room::whereIn('id', $oldRoomIds)->update(['status' => 'available']);
+
+            $rooms = Room::with('roomType')->findMany($validated['room_ids']);
             $roomsData = $rooms->mapWithKeys(function ($room) use (&$roomTotal, $duration, $isHourly) {
-                $rate = $isHourly
-                    ? ($room->roomType->hourly_rate ?? 0)
-                    : ($room->roomType->base_rate ?? 0);
+                $rate = $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0);
                 $roomTotal += $rate * $duration;
                 return [$room->id => ['rate' => $rate]];
             });
             $booking->rooms()->sync($roomsData);
+
+            Room::whereIn('id', $validated['room_ids'])->update(['status' => 'booked']);
         } else {
             foreach ($booking->rooms as $room) {
-                $rate = $isHourly
-                    ? ($room->roomType->hourly_rate ?? 0)
-                    : ($room->roomType->base_rate ?? 0);
+                $rate = $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0);
                 $roomTotal += $rate * $duration;
             }
         }
 
-        // Cập nhật dịch vụ nếu có
+        // Cập nhật dịch vụ
         $serviceTotal = 0;
         if ($request->has('services')) {
             $booking->services()->detach();
@@ -497,7 +545,7 @@ class BookingController extends Controller
                 $serviceTotal += $subtotal;
                 $booking->services()->attach($srv['service_id'], [
                     'quantity' => $srv['quantity'],
-                    'room_id'  => $srv['room_id'] ?? null
+                    'room_id'  => $srv['room_id'] ?? null,
                 ]);
             }
         } else {
@@ -506,9 +554,10 @@ class BookingController extends Controller
             }
         }
 
+        // Tính lại tổng
         $rawTotal = $roomTotal + $serviceTotal;
 
-        // Áp dụng khuyến mãi nếu có
+        // Khuyến mãi
         $discount = 0;
         if ($request->has('promotion_code')) {
             $promotion = Promotion::where('code', $validated['promotion_code'])->first();
@@ -517,18 +566,14 @@ class BookingController extends Controller
                     ? $rawTotal * ($promotion->discount_value / 100)
                     : $promotion->discount_value;
                 $promotion->increment('used_count');
-                $booking->promotions()->sync([
-                    $promotion->id => [
-                        'promotion_code' => $promotion->code,
-                        'applied_at'     => now(),
-                    ]
-                ]);
+                $booking->promotions()->sync([$promotion->id => [
+                    'promotion_code' => $promotion->code,
+                    'applied_at' => now(),
+                ]]);
             }
-        } else {
-            $booking->promotions()->detach();
         }
 
-        // Trạng thái
+        // Cập nhật trạng thái
         if (!empty($validated['check_in_at'])) {
             $booking->status = 'Checked-in';
         } elseif ($request->has('deposit_amount') && $validated['deposit_amount'] > 0) {
@@ -536,26 +581,23 @@ class BookingController extends Controller
         } else {
             $booking->status = 'Confirmed';
         }
-
         if (!empty($validated['check_out_at'])) {
             $booking->status = 'Checked-out';
         }
 
-        // Gửi lại email nếu thay đổi cọc
-        $oldDeposit = $booking->deposit_amount;
+        // Gửi email nếu thay đổi cọc
         if ($request->has('deposit_amount')) {
-            $newDeposit = $validated['deposit_amount'];
-            if ($oldDeposit != $newDeposit && $newDeposit > 0) {
+            if ($booking->deposit_amount != $validated['deposit_amount'] && $validated['deposit_amount'] > 0) {
                 $depositUrl = route('deposit.vnpay.create', ['booking_id' => $booking->id]);
                 Mail::to($customer->email)->send(new DepositLinkMail($booking, $depositUrl));
             }
-            $booking->deposit_amount = $newDeposit;
+            $booking->deposit_amount = $validated['deposit_amount'];
         }
 
-        // Tính toán lại tổng
+        // Lưu lại
         $booking->raw_total       = $rawTotal;
         $booking->discount_amount = $discount;
-        $booking->total_amount    = max(0, $rawTotal - $discount);
+        $booking->total_amount    = null;
         $booking->save();
 
         return response()->json([
@@ -771,8 +813,13 @@ class BookingController extends Controller
             ], 400);
         }
 
-        $booking->status = 'Canceled';
-        $booking->save();
+        DB::transaction(function () use ($booking) {
+            foreach ($booking->rooms as $room) {
+                $room->update(['status' => 'available']);
+            }
+            $booking->update(['status' => 'Canceled']);
+        });
+
 
         return response()->json([
             'message' => 'Huỷ đơn đặt phòng thành công!',
