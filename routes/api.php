@@ -175,6 +175,12 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
 
     Route::post('/bookings/{booking}/remove-service', [BookingController::class, 'removeService']);
 
+    // routes/api.php
+    Route::get('/bookings/{booking}/amenities-options', [BookingController::class, 'amenityOptions']);
+    Route::post('/bookings/{booking}/amenities-incurred', [BookingController::class, 'storeAmenitiesIncurred']);
+    // Route::get('/bookings/{booking}/rooms/{room}/amenities', [BookingController::class, 'roomAmenities']);
+    
+
     // Khách hàng
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::get('/customers/{customer}', [CustomerController::class, 'show']);
