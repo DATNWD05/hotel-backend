@@ -36,7 +36,7 @@ class RoomTypeController extends Controller
             'name'         => 'required|string|max:255|unique:room_types,name',
             'description'  => 'nullable|string',
             'max_occupancy' => 'required|integer|min:0|max:255',
-            'base_rate'    => 'required|numeric|min:0',
+            'base_rate'    => 'required|numeric|min:100000',
         ]);
 
         if ($validator->fails()) {
@@ -78,7 +78,7 @@ class RoomTypeController extends Controller
             'name'         => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
             'description'  => 'nullable|string',
             'max_occupancy' => 'required|integer|min:0|max:255',
-            'base_rate'    => 'required|numeric|min:0',
+            'base_rate'    => 'required|numeric|min:100000',
         ]);
 
         if ($validator->fails()) {
