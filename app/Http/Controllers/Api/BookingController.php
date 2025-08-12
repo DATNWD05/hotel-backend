@@ -531,87 +531,87 @@ class BookingController extends Controller
      * API thực hiện hành động check-in
      * POST /api/check-in/{id}
      */
-    public function checkIn(Booking $booking)
-    {
-        if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
-            return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
-            ], 400);
-        }
-
-        DB::beginTransaction();
-        try {
-            $booking->status = 'Checked-in';
-            $booking->check_in_at = now();
-            $booking->save();
-
-            foreach ($booking->rooms as $room) {
-                $room->update(['status' => 'booked']);
+        public function checkIn(Booking $booking)
+        {
+            if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
+                return response()->json([
+                    'error' => 'Booking hiện không ở trạng thái cho phép check-in'
+                ], 400);
             }
 
-            DB::commit();
+            DB::beginTransaction();
+            try {
+                $booking->status = 'Checked-in';
+                $booking->check_in_at = now();
+                $booking->save();
+
+                foreach ($booking->rooms as $room) {
+                    $room->update(['status' => 'booked']);
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Check-in thành công',
+                    'booking_id' => $booking->id,
+                    'check_in_at' => $booking->check_in_at,
+                    'rooms' => $booking->rooms->map(fn($room) => [
+                        'room_number' => $room->room_number,
+                        'status' => $room->status
+                    ])
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                return response()->json([
+                    'error' => 'Đã xảy ra lỗi khi check-in',
+                    'message' => $e->getMessage()
+                ], 500);
+            }
+        }
+
+        public function checkOut(Booking $booking)
+        {
+            $booking->load(['rooms.roomType', 'services']);
+
+            try {
+                $totals = $this->calculateBookingTotals($booking);
+            } catch (\Exception $e) {
+                return response()->json(['error' => $e->getMessage()], 400);
+            }
 
             return response()->json([
-                'success' => true,
-                'message' => 'Check-in thành công',
+                'message' => 'Thông tin trước khi thực hiện checkout',
                 'booking_id' => $booking->id,
-                'check_in_at' => $booking->check_in_at,
-                'rooms' => $booking->rooms->map(fn($room) => [
-                    'room_number' => $room->room_number,
-                    'status' => $room->status
-                ])
+                'room_details' => $totals['room_details'],
+                'nights' => $totals['nights'],
+                'room_total' => $totals['room_total'],
+                'service_total' => $totals['service_total'],
+                'discount_amount' => $totals['discount'],
+                'raw_total' => $totals['raw_total'],
+                'total_amount' => $totals['total_amount'],
+                'status' => $booking->status,
             ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
+        }
+
+
+        public function cancel(Booking $booking)
+        {
+            if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
+                return response()->json([
+                    'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
+                ], 400);
+            }
+
+            $booking->status = 'Canceled';
+            $booking->save();
+
             return response()->json([
-                'error' => 'Đã xảy ra lỗi khi check-in',
-                'message' => $e->getMessage()
-            ], 500);
+                'message' => 'Huỷ đơn đặt phòng thành công!',
+                'booking_id' => $booking->id,
+                'status' => $booking->status
+            ]);
         }
-    }
-
-    public function checkOut(Booking $booking)
-    {
-        $booking->load(['rooms.roomType', 'services']);
-
-        try {
-            $totals = $this->calculateBookingTotals($booking);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
-        }
-
-        return response()->json([
-            'message' => 'Thông tin trước khi thực hiện checkout',
-            'booking_id' => $booking->id,
-            'room_details' => $totals['room_details'],
-            'nights' => $totals['nights'],
-            'room_total' => $totals['room_total'],
-            'service_total' => $totals['service_total'],
-            'discount_amount' => $totals['discount'],
-            'raw_total' => $totals['raw_total'],
-            'total_amount' => $totals['total_amount'],
-            'status' => $booking->status,
-        ]);
-    }
-
-
-    public function cancel(Booking $booking)
-    {
-        if (in_array($booking->status, ['Checked-out', 'Checked-in'])) {
-            return response()->json([
-                'error' => 'Không thể huỷ đơn đã nhận phòng hoặc đã trả phòng!'
-            ], 400);
-        }
-
-        $booking->status = 'Canceled';
-        $booking->save();
-
-        return response()->json([
-            'message' => 'Huỷ đơn đặt phòng thành công!',
-            'booking_id' => $booking->id,
-            'status' => $booking->status
-        ]);
-    }
 
     public function payByCash(Booking $booking)
     {

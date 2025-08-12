@@ -15,10 +15,10 @@ class WorkAssignmentController extends Controller
 
     use AuthorizesRequests;
 
-    public function __construct()
-    {
-        $this->authorizeResource(WorkAssignment::class, 'work_assignments');
-    }
+    // public function __construct()
+    // {
+    //     $this->authorizeResource(WorkAssignment::class, 'work_assignments');
+    // }
 
     // Danh sách phân công
     public function index(Request $request)
