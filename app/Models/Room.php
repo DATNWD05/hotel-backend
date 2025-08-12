@@ -27,6 +27,14 @@ class Room extends Model
             ->withTimestamps(); // nếu bảng trung gian có created_at và updated_at
     }
 
+    public function bookingAmenities()
+    {
+        return $this->belongsToMany(Amenity::class, 'booking_room_amenities')
+            ->withPivot(['booking_id', 'price', 'quantity'])
+            ->withTimestamps();
+    }
+
+
     public function resolveRouteBinding($value, $field = null)
     {
         return $this->withTrashed()

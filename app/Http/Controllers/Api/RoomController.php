@@ -16,10 +16,10 @@ class RoomController extends Controller
 {
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(Room::class, 'rooms');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(Room::class, 'rooms');
+    }
 
     public function index(Request $request)
     {
