@@ -12,6 +12,7 @@ use App\Models\Payment;
 use App\Models\Service;
 use App\Models\Customer;
 use App\Models\Promotion;
+use App\Models\BookingRoomAmenity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -684,55 +685,80 @@ class BookingController extends Controller
             'creator',
             'rooms.roomType.amenities',
             'services',
-            'promotions'
+            'promotions',
+            // chỉ lấy tiện nghi phát sinh của phòng thuộc đúng booking này
+            'rooms.bookingAmenities' => function ($q) use ($booking) {
+                $q->wherePivot('booking_id', $booking->id);
+            },
         ]);
 
         return response()->json([
-            'booking_id' => $booking->id,
-            'status' => $booking->status,
-            'check_in_date' => $booking->check_in_date,
-            'check_out_date' => $booking->check_out_date,
-            'deposit_amount' => $booking->deposit_amount,
-            'total_amount' => $booking->total_amount,
-            'raw_total' => $booking->raw_total,
+            'booking_id'      => $booking->id,
+            'status'          => $booking->status,
+            'check_in_date'   => $booking->check_in_date,
+            'check_out_date'  => $booking->check_out_date,
+            'deposit_amount'  => $booking->deposit_amount,
+            'total_amount'    => $booking->total_amount,
+            'raw_total'       => $booking->raw_total,
             'discount_amount' => $booking->discount_amount,
+
             'customer' => [
-                'name' => $booking->customer->name,
-                'gender' => $booking->customer->gender,
-                'email' => $booking->customer->email,
-                'phone' => $booking->customer->phone,
-                'cccd' => $booking->customer->cccd,
+                'name'        => $booking->customer->name,
+                'gender'      => $booking->customer->gender,
+                'email'       => $booking->customer->email,
+                'phone'       => $booking->customer->phone,
+                'cccd'        => $booking->customer->cccd,
                 'nationality' => $booking->customer->nationality,
-                'address' => $booking->customer->address,
+                'address'     => $booking->customer->address,
             ],
+
             'rooms' => $booking->rooms->map(function ($room) {
                 return [
                     'room_number' => $room->room_number,
-                    'status' => $room->status,
-                    'image' => $room->image,
-                    'rate' => $room->pivot->rate,
+                    'status'      => $room->status,
+                    'image'       => $room->image,
+                    'rate'        => $room->pivot->rate,
+
+                    // tiện nghi mặc định theo loại phòng
                     'type' => [
-                        'name' => $room->roomType->name ?? null,
+                        'name'          => $room->roomType->name ?? null,
                         'max_occupancy' => $room->roomType->max_occupancy ?? null,
-                        'amenities' => $room->roomType->amenities->map(function ($amenity) {
+                        'amenities'     => $room->roomType->amenities->map(function ($amenity) {
                             return [
-                                'name' => $amenity->name,
-                                'icon' => $amenity->icon,
-                                'quantity' => $amenity->pivot->quantity ?? 1
+                                'name'     => $amenity->name,
+                                'icon'     => $amenity->icon,
+                                'quantity' => $amenity->pivot->quantity ?? 1,
                             ];
-                        })
-                    ]
+                        }),
+                    ],
+
+                    // tiện nghi PHÁT SINH cho CHÍNH phòng này trong booking hiện tại
+                    'incurred_amenities' => $room->bookingAmenities->map(function ($a) {
+                        $qty = (int) ($a->pivot->quantity ?? 0);
+                        $price = (float) ($a->pivot->price ?? 0);
+                        return [
+                            'id'       => $a->id,
+                            'name'     => $a->name,
+                            'icon'     => $a->icon,
+                            'price'    => $price,     // đơn giá tại thời điểm ghi nhận
+                            'quantity' => $qty,
+                            'note'     => $a->pivot->note,
+                            'total'    => round($price * $qty, 2),
+                        ];
+                    }),
                 ];
             }),
+
             'services' => $booking->services->map(function ($service) {
                 return [
-                    'name' => $service->name,
+                    'name'        => $service->name,
                     'description' => $service->description,
-                    'price' => $service->price,
-                    'quantity' => $service->pivot->quantity
+                    'price'       => $service->price,
+                    'quantity'    => $service->pivot->quantity,
                 ];
             }),
-            'created_by' => $booking->creator->name ?? null
+
+            'created_by' => $booking->creator->name ?? null,
         ]);
     }
 
@@ -743,7 +769,20 @@ class BookingController extends Controller
      */
     public function checkIn(Booking $booking)
     {
-        if (!in_array($booking->status, ['Pending', 'Confirmed'])) {
+        if ($booking->status !== 'Confirmed') {
+            return response()->json([
+                'error' => 'Chỉ các booking đã được xác nhận mới được check-in.'
+            ], 400);
+        }
+
+        $now = now();
+        $startTime = $booking->start_time instanceof Carbon
+            ? $booking->start_time
+            : Carbon::parse($booking->start_time);
+
+        $allowedLateCheckIn = $startTime->copy()->addHours(2);
+
+        if ($now->greaterThan($allowedLateCheckIn)) {
             return response()->json([
                 'error' => 'Booking hiện không ở trạng thái cho phép check-in'
             ], 400);
@@ -1032,5 +1071,84 @@ class BookingController extends Controller
                 'message' => 'Lỗi khi xử lý thanh toán: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    // app/Http/Controllers/BookingController.php
+    public function amenityOptions(Booking $booking)
+    {
+        $booking->load([
+            'rooms:id,room_number,room_type_id',
+            'rooms.roomType.amenities:id,name,price',
+            'rooms.bookingAmenities' => fn($q) => $q->wherePivot('booking_id', $booking->id)
+        ]);
+
+        return response()->json([
+            'rooms' => $booking->rooms->map(fn($room) => [
+                'id'          => (int) $room->id,
+                'room_number' => $room->room_number,
+                'amenities'   => ($room->roomType?->amenities ?? collect())->map(fn($a) => [
+                    'id' => (int) $a->id,
+                    'name' => $a->name,
+                    'price' => (int) ($a->price ?? 0),
+                ])->values(),
+            ])->values(),
+
+            'incurred' => $booking->rooms->map(fn($room) => [
+                'room_id' => (int) $room->id,
+                'items'   => $room->bookingAmenities
+                    ->where('pivot.booking_id', $booking->id)
+                    ->map(fn($a) => [
+                        'amenity_id' => (int) $a->id,
+                        'name'       => $a->name,
+                        'price'      => (int) ($a->pivot->price ?? 0),
+                        'quantity'   => (int) ($a->pivot->quantity ?? 1),
+                        'subtotal'   => (int) (($a->pivot->price ?? 0) * ($a->pivot->quantity ?? 1)),
+                    ])->values(),
+            ])->values(),
+        ]);
+    }
+
+    // public function roomAmenities(Booking $booking, Room $room)
+    // {
+    //     abort_unless($booking->rooms()->whereKey($room->id)->exists(), 404);
+    //     $room->load('roomType.amenities:id,name,price');
+
+    //     return response()->json([
+    //         'room_id'   => (int) $room->id,
+    //         'amenities' => $room->roomType?->amenities->map(fn($a) => [
+    //             'id' => (int) $a->id,
+    //             'name' => $a->name,
+    //             'price' => (int) ($a->price ?? 0),
+    //         ])->values() ?? [],
+    //     ]);
+    // }
+
+    public function storeAmenitiesIncurred(Request $req, Booking $booking)
+    {
+        $data = $req->validate([
+            'items' => 'required|array|min:1',
+            'items.*.room_id'    => 'required|integer|exists:rooms,id',
+            'items.*.amenity_id' => 'required|integer|exists:amenities,id',
+            'items.*.price'      => 'required|integer|min:0',
+            'items.*.quantity'   => 'required|integer|min:1',
+        ]);
+
+        foreach ($data['items'] as $row) {
+            abort_unless($booking->rooms()->whereKey($row['room_id'])->exists(), 422);
+
+            BookingRoomAmenity::updateOrCreate(
+                [
+                    'booking_id' => $booking->id,
+                    'room_id'    => $row['room_id'],
+                    'amenity_id' => $row['amenity_id'],
+                ],
+                [
+                    'price'    => $row['price'],
+                    'quantity' => $row['quantity'],
+                ]
+            );
+        }
+
+        return response()->json(['status' => 'ok']);
     }
 }

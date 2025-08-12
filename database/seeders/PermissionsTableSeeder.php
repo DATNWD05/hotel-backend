@@ -105,7 +105,7 @@ class PermissionsTableSeeder extends Seeder
 
             // Customers
             'view_customers',
-'show_customers',
+            'show_customers',
             'create_customers',
             'edit_customers',
             'check_cccd_customers',
