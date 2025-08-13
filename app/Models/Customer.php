@@ -11,6 +11,7 @@ class Customer extends Model
     use HasFactory;
     protected $fillable = [
         'cccd',
+        'cccd_image_path',
         "name",
         'gender',
         'email',

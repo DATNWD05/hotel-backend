@@ -36,8 +36,7 @@ class DatabaseSeeder extends Seeder
         // $this->call(ShiftSeeder::class);
         // $this->call(WorkAssignmentSeeder::class);
         $this->call([
-            SalaryRuleSeeder::class,
-            WorkAssignmentSeeder::class
+            ShiftSeeder::class
         ]);
     }
 }

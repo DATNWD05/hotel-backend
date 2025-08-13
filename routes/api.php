@@ -176,10 +176,15 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
 
     Route::post('/bookings/{booking}/remove-service', [BookingController::class, 'removeService']);
 
-    // routes/api.php
+    // dịch vụ và tiện nghi đã sử dụng
     Route::get('/bookings/{booking}/amenities-options', [BookingController::class, 'amenityOptions']);
     Route::post('/bookings/{booking}/amenities-incurred', [BookingController::class, 'storeAmenitiesIncurred']);
     // Route::get('/bookings/{booking}/rooms/{room}/amenities', [BookingController::class, 'roomAmenities']);
+<<<<<<< HEAD
+=======
+    Route::get('bookings/{booking}/services-used', [BookingController::class, 'servicesUsed']);
+    
+>>>>>>> 9fcd2739c7f36392445176e907d2e2fe10390575
 
     // Khách hàng
     Route::get('/customers', [CustomerController::class, 'index']);
