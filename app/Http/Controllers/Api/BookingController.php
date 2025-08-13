@@ -1114,6 +1114,12 @@ class BookingController extends Controller
             'items.*.quantity'   => 'required|integer|min:1',
         ]);
 
+        $items = $data['items'] ?? [];
+        if (count($items) === 0) {
+            // Không có tiện nghi phát sinh -> coi như OK
+            return response()->json(['message' => 'No incurred amenities'], 200);
+        }
+
         foreach ($data['items'] as $row) {
             abort_unless($booking->rooms()->whereKey($row['room_id'])->exists(), 422);
 
