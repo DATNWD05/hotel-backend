@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 
 class InvoiceController extends Controller
 {
-    use AuthorizesRequests;
+    // use AuthorizesRequests;
 
     // public function __construct()
     // {
