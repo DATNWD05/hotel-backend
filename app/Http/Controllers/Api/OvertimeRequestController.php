@@ -341,26 +341,13 @@ class OvertimeRequestController extends Controller
         ]);
     }
 
-
-    public function deleteByDate(Request $request)
+    public function destroy(OvertimeRequest $overtimeRequest)
     {
-        $validated = $request->validate([
-            'work_date' => 'required|date',
-            'employee_ids' => 'required|array|min:1',
-            'employee_ids.*' => 'exists:employees,id',
-        ]);
-
-        $workDate = Carbon::parse($validated['work_date']);
-
-        // Xóa OT cho tất cả nhân viên trong danh sách
-        $deletedCount = OvertimeRequest::whereIn('employee_id', $validated['employee_ids'])
-            ->whereDate('work_date', $workDate)
-            ->delete();
+        $overtimeRequest->delete();
 
         return response()->json([
             'success' => true,
-            'message' => "Đã xóa {$deletedCount} bản ghi tăng ca cho ngày {$workDate->format('d/m/Y')}.",
-            'deleted_count' => $deletedCount
+            'message' => 'Đã xóa bản ghi tăng ca thành công.'
         ]);
     }
 }

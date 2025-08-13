@@ -149,7 +149,7 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
         Route::get('/', [OvertimeRequestController::class, 'index']);
         Route::post('/', [OvertimeRequestController::class, 'store']);
         Route::put('/{overtimeRequest}', [OvertimeRequestController::class, 'update']);
-        Route::delete('/by-date', [OvertimeRequestController::class, 'deleteByDate']);
+        Route::delete('/{overtimeRequest}', [OvertimeRequestController::class, 'destroy']);
     });
 });
 
