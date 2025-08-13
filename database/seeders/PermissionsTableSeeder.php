@@ -141,6 +141,7 @@ class PermissionsTableSeeder extends Seeder
             // Overtime Requests
             'view_overtime_requests',
             'create_overtime_requests',
+            'edit_overtime_requests',
             'delete_overtime_requests_by_date',
 
             // Attendance & Face enrollment
