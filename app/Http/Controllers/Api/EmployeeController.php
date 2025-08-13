@@ -24,7 +24,7 @@ class EmployeeController extends Controller
     // }
     public function index()
     {
-        $data = Employee::with(['department', 'role', 'user'])->paginate(10);
+        $data = Employee::with(['department', 'role', 'user','user.role'])->paginate(10);
 
         return response()->json([
             'status' => 'success',

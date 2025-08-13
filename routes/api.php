@@ -148,6 +148,7 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
     Route::prefix('overtime-requests')->group(function () {
         Route::get('/', [OvertimeRequestController::class, 'index']);
         Route::post('/', [OvertimeRequestController::class, 'store']);
+        Route::delete('/by-date', [OvertimeRequestController::class, 'deleteByDate']);
     });
 });
 
@@ -159,6 +160,10 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::put('/bookings/{booking}', [BookingController::class, 'update']);
     Route::post('/bookings/{booking}/add-services', [BookingController::class, 'addServices']);
     Route::post('/bookings/{booking}/deposit', [BookingController::class, 'payDeposit']);
+
+    //Check phòng trống
+    Route::post('/available-rooms', [BookingController::class, 'getAvailableRooms']);
+    Route::post('/bookings/validate-rooms', [BookingController::class, 'validateRooms']);
 
 
     // xử lí trạng thái bookings
