@@ -341,6 +341,7 @@ class OvertimeRequestController extends Controller
         ]);
     }
 
+    // Hàm xóa bản ghi tăng ca
     public function destroy(OvertimeRequest $overtimeRequest)
     {
         $overtimeRequest->delete();
