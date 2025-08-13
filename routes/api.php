@@ -148,6 +148,7 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
     Route::prefix('overtime-requests')->group(function () {
         Route::get('/', [OvertimeRequestController::class, 'index']);
         Route::post('/', [OvertimeRequestController::class, 'store']);
+        Route::put('/{overtimeRequest}', [OvertimeRequestController::class, 'update']);
         Route::delete('/by-date', [OvertimeRequestController::class, 'deleteByDate']);
     });
 });
@@ -179,7 +180,6 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings/{booking}/amenities-options', [BookingController::class, 'amenityOptions']);
     Route::post('/bookings/{booking}/amenities-incurred', [BookingController::class, 'storeAmenitiesIncurred']);
     // Route::get('/bookings/{booking}/rooms/{room}/amenities', [BookingController::class, 'roomAmenities']);
-    
 
     // Khách hàng
     Route::get('/customers', [CustomerController::class, 'index']);
