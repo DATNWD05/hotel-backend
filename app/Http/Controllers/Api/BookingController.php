@@ -823,6 +823,20 @@ class BookingController extends Controller
     {
         $booking->load(['rooms.roomType', 'services']);
 
+        // Lấy & chuẩn hoá ngày nhận/trả phòng từ các cột khả dụng
+        $ciRaw = $booking->check_in_date
+            ?? $booking->check_in_at
+            ?? $booking->start_date
+            ?? $booking->arrival_at;
+
+        $coRaw = $booking->check_out_date
+            ?? $booking->check_out_at
+            ?? $booking->end_date
+            ?? $booking->departure_at;
+
+        $checkIn  = $ciRaw ? Carbon::parse($ciRaw)->format('Y-m-d H:i:s') : null;
+        $checkOut = $coRaw ? Carbon::parse($coRaw)->format('Y-m-d H:i:s') : null;
+
         try {
             $totals = $this->calculateBookingTotals($booking);
         } catch (\Exception $e) {
@@ -830,16 +844,20 @@ class BookingController extends Controller
         }
 
         return response()->json([
-            'message' => 'Thông tin trước khi thực hiện checkout',
-            'booking_id' => $booking->id,
-            'room_details' => $totals['room_details'],
-            'nights' => $totals['nights'],
-            'room_total' => $totals['room_total'],
-            'service_total' => $totals['service_total'],
+            'message'         => 'Thông tin trước khi thực hiện checkout',
+            'booking_id'      => $booking->id,
+            // 🔹 Thêm 2 trường ngày cho FE
+            'check_in_date'   => $checkIn,
+            'check_out_date'  => $checkOut,
+
+            'room_details'    => $totals['room_details'],
+            'nights'          => $totals['nights'],
+            'room_total'      => $totals['room_total'],
+            'service_total'   => $totals['service_total'],
             'discount_amount' => $totals['discount'],
-            'raw_total' => $totals['raw_total'],
-            'total_amount' => $totals['total_amount'],
-            'status' => $booking->status,
+            'raw_total'       => $totals['raw_total'],
+            'total_amount'    => $totals['total_amount'],
+            'status'          => $booking->status,
         ]);
     }
 
@@ -1133,6 +1151,12 @@ class BookingController extends Controller
             'items.*.quantity'   => 'required|integer|min:1',
         ]);
 
+        $items = $data['items'] ?? [];
+        if (count($items) === 0) {
+            // Không có tiện nghi phát sinh -> coi như OK
+            return response()->json(['message' => 'No incurred amenities'], 200);
+        }
+
         foreach ($data['items'] as $row) {
             abort_unless($booking->rooms()->whereKey($row['room_id'])->exists(), 422);
 
@@ -1150,5 +1174,30 @@ class BookingController extends Controller
         }
 
         return response()->json(['status' => 'ok']);
+    }
+
+    public function servicesUsed(Booking $booking)
+    {
+        // Eager-load để tránh N+1
+        $items = $booking->serviceUsages()
+            ->with([
+                'room:id,room_number',             // đổi cột nếu khác
+                'service:id,name,price',           // đổi cột giá nếu là unit_price
+            ])
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        // Chuẩn hóa về format mà FE đang đọc
+        $data = $items->map(function ($bs) {
+            return [
+                'name'        => optional($bs->service)->name ?? '',
+                'room_number' => optional($bs->room)->room_number ?? '',
+                'price'       => (int) (optional($bs->service)->price ?? 0), // nếu có cột snapshot giá ở booking_service thì ưu tiên bs->price
+                'quantity'    => (int) $bs->quantity,
+                'created_at'  => optional($bs->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->values();
+
+        return response()->json($data);
     }
 }
