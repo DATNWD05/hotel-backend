@@ -16,10 +16,10 @@ class OvertimeRequestController extends Controller
 
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(OvertimeRequest::class, 'overtime_requests');
+    }
 
     public function index(Request $request)
     {

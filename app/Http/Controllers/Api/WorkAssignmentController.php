@@ -16,16 +16,16 @@ class WorkAssignmentController extends Controller
 
     use AuthorizesRequests;
 
-    // public function __construct()
-    // {
-    //     $this->authorizeResource(WorkAssignment::class, 'work_assignments');
-    // }
+    public function __construct()
+    {
+        $this->authorizeResource(WorkAssignment::class, 'work_assignments');
+    }
 
     // Danh sách phân công
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 10);
-        $assignments = WorkAssignment::with(['employee.user.role', 'shift'])
+        $assignments = WorkAssignment::with(['employee', 'shift', 'user.role'])
             ->orderByDesc('work_date')
             ->paginate($perPage);
 
