@@ -149,7 +149,7 @@ Route::middleware('auth:sanctum', 'role:1,2')->group(function () {
         Route::get('/', [OvertimeRequestController::class, 'index']);
         Route::post('/', [OvertimeRequestController::class, 'store']);
         Route::put('/{overtimeRequest}', [OvertimeRequestController::class, 'update']);
-        Route::delete('/by-date', [OvertimeRequestController::class, 'deleteByDate']);
+        Route::delete('/{overtimeRequest}', [OvertimeRequestController::class, 'destroy']);
     });
 });
 
@@ -176,7 +176,7 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
 
     Route::post('/bookings/{booking}/remove-service', [BookingController::class, 'removeService']);
 
-    // routes/api.php
+    // dịch vụ và tiện nghi đã sử dụng
     Route::get('/bookings/{booking}/amenities-options', [BookingController::class, 'amenityOptions']);
     Route::post('/bookings/{booking}/amenities-incurred', [BookingController::class, 'storeAmenitiesIncurred']);
     // Route::get('/bookings/{booking}/rooms/{room}/amenities', [BookingController::class, 'roomAmenities']);

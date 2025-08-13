@@ -27,6 +27,17 @@ class Booking extends Model
         'is_deposit_paid',
     ];
 
+    // app/Models/Booking.php
+    protected $casts = [
+        'check_in_date'  => 'datetime',
+        'check_out_date' => 'datetime',
+        'check_in_at'    => 'datetime',
+        'check_out_at'   => 'datetime',
+        'start_date'     => 'datetime',
+        'end_date'       => 'datetime',
+    ];
+
+
 
     // Quan hệ khách hàng
     public function customer(): BelongsTo
@@ -54,6 +65,11 @@ class Booking extends Model
         return $this->belongsToMany(Service::class, 'booking_service')
             ->withPivot(['room_id', 'quantity'])
             ->withTimestamps();
+    }
+
+    public function serviceUsages(): HasMany
+    {
+        return $this->hasMany(BookingService::class);
     }
 
 
