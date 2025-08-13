@@ -8,6 +8,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Facades\Storage;
 
 class CustomerController extends Controller
 {
@@ -125,10 +126,26 @@ class CustomerController extends Controller
             'nationality' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'note' => 'nullable|string',
+            'cccd_image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048', // ảnh tối đa 2MB
         ]);
 
+        // Nếu có upload ảnh mới
+        if ($request->hasFile('cccd_image')) {
+            // Xóa ảnh cũ nếu có
+            if (!empty($customer->cccd_image_path) && Storage::disk('public')->exists($customer->cccd_image_path)) {
+                Storage::disk('public')->delete($customer->cccd_image_path);
+            }
+
+            // Lưu ảnh mới và gán đường dẫn vào data
+            $data['cccd_image_path'] = $request->file('cccd_image')->store('cccd_images', 'public');
+        }
+
         $customer->update($data);
-        return response()->json($customer);
+
+        return response()->json([
+            'message' => 'Cập nhật khách hàng thành công',
+            'data' => $customer
+        ]);
     }
 
     // Kiểm tra tồn tại theo CCCD
