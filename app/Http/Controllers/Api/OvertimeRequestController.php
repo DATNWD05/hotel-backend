@@ -214,141 +214,25 @@ class OvertimeRequestController extends Controller
         }
     }
 
-    public function update(Request $request, OvertimeRequest $overtimeRequest)
+    public function deleteByDate(Request $request)
     {
         $validated = $request->validate([
             'work_date' => 'required|date',
-            'overtime_type' => 'required|in:after_shift,custom',
-            'duration' => 'required_if:overtime_type,after_shift|integer|min:1|max:6',
-            'start_datetime' => 'required_if:overtime_type,custom|date_format:Y-m-d H:i',
-            'end_datetime' => 'required_if:overtime_type,custom|date_format:Y-m-d H:i|after:start_datetime',
-            'reason' => 'nullable|string',
+            'employee_ids' => 'required|array|min:1',
+            'employee_ids.*' => 'exists:employees,id',
         ]);
 
         $workDate = Carbon::parse($validated['work_date']);
-        $now = Carbon::now();
-        $employeeId = $overtimeRequest->employee_id;
-        $employee = Employee::find($employeeId);
 
-        if (!$employee) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy nhân viên'
-            ], 404);
-        }
-
-        // Không cho sửa cho ngày đã qua
-        if ($workDate->lt($now->startOfDay())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không thể chỉnh sửa tăng ca cho ngày đã qua'
-            ], 400);
-        }
-
-        // Đếm số ca chính để tính giới hạn OT
-        $mainShiftsCount = WorkAssignment::where('employee_id', $employeeId)
-            ->where('work_date', $workDate)
-            ->count();
-
-        $maxAllowed = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
-
-        if ($maxAllowed === 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Nhân viên đã làm đủ 2 ca, không được tăng ca'
-            ], 400);
-        }
-
-        $startDatetime = null;
-        $endDatetime = null;
-
-        if ($validated['overtime_type'] === 'after_shift') {
-            // Lấy ca chính cuối cùng trong ngày
-            $lastShift = WorkAssignment::join('shifts', 'work_assignments.shift_id', '=', 'shifts.id')
-                ->where('work_assignments.employee_id', $employeeId)
-                ->where('work_assignments.work_date', $workDate)
-                ->orderByDesc('shifts.end_time')
-                ->select('work_assignments.*', 'shifts.end_time')
-                ->first();
-
-            if (!$lastShift) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Không có ca chính để tăng ca'
-                ], 400);
-            }
-
-            $startDatetime = Carbon::parse($workDate->format('Y-m-d') . ' ' . $lastShift->end_time);
-            $endDatetime = $startDatetime->copy()->addHours($validated['duration']);
-
-            if ($endDatetime->lt($now)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Thời gian tăng ca đã qua'
-                ], 400);
-            }
-        } else {
-            // Custom giờ OT
-            $startDatetime = Carbon::parse($validated['start_datetime']);
-            $endDatetime = Carbon::parse($validated['end_datetime']);
-
-            if ($startDatetime->lt($now) && $endDatetime->lt($now)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Khoảng thời gian đã qua: ' . $startDatetime->format('H:i') . '-' . $endDatetime->format('H:i')
-                ], 400);
-            }
-        }
-
-        // Kiểm tra giới hạn số giờ OT
-        $otHours = $startDatetime->floatDiffInHours($endDatetime);
-        if ($otHours > $maxAllowed) {
-            return response()->json([
-                'success' => false,
-                'message' => "Tăng ca $otHours tiếng, vượt giới hạn tối đa $maxAllowed tiếng"
-            ], 400);
-        }
-
-        // Check trùng ca chính
-        $hasMainShiftConflict = WorkAssignment::where('employee_id', $employeeId)
-            ->where('work_date', $workDate)
-            ->whereHas('shift', function ($q) use ($startDatetime, $endDatetime) {
-                $q->whereTime('start_time', '<', $endDatetime->toTimeString())
-                    ->whereTime('end_time', '>', $startDatetime->toTimeString());
-            })
-            ->exists();
-
-        if ($hasMainShiftConflict) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Thời gian tăng ca trùng với ca chính'
-            ], 400);
-        }
-
-        // Cập nhật OT
-        $overtimeRequest->update([
-            'overtime_type' => $validated['overtime_type'],
-            'work_date' => $workDate,
-            'start_datetime' => $startDatetime,
-            'end_datetime' => $endDatetime,
-            'reason' => $validated['reason'] ?? null,
-        ]);
+        // Xóa OT cho tất cả nhân viên trong danh sách
+        $deletedCount = OvertimeRequest::whereIn('employee_id', $validated['employee_ids'])
+            ->whereDate('work_date', $workDate)
+            ->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Cập nhật tăng ca thành công',
-            'data' => $overtimeRequest
-        ]);
-    }
-
-    // Hàm xóa bản ghi tăng ca
-    public function destroy(OvertimeRequest $overtimeRequest)
-    {
-        $overtimeRequest->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Đã xóa bản ghi tăng ca thành công.'
+            'message' => "Đã xóa {$deletedCount} bản ghi tăng ca cho ngày {$workDate->format('d/m/Y')}.",
+            'deleted_count' => $deletedCount
         ]);
     }
 }
