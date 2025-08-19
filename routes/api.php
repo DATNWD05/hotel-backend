@@ -180,6 +180,7 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     Route::get('/bookings/{booking}/amenities-options', [BookingController::class, 'amenityOptions']);
     Route::post('/bookings/{booking}/amenities-incurred', [BookingController::class, 'storeAmenitiesIncurred']);
     // Route::get('/bookings/{booking}/rooms/{room}/amenities', [BookingController::class, 'roomAmenities']);
+    Route::get('bookings/{booking}/services-used', [BookingController::class, 'servicesUsed']);
 
     // Khách hàng
     Route::get('/customers', [CustomerController::class, 'index']);

@@ -12,9 +12,10 @@ class Invoice extends Model
         'issued_date',
         'room_amount',
         'service_amount',
+        'amenity_amount',
         'discount_amount',
         'deposit_amount',
-        'total_amount',
+        'total_amount'
     ];
 
 

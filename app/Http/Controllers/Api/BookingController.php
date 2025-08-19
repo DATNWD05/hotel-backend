@@ -98,12 +98,6 @@ class BookingController extends Controller
             ], 422);
         }
 
-        if ($checkIn->hour >= 20) {
-            return response()->json([
-                'message' => 'Sau 20h chỉ nhận đặt qua đêm, không áp dụng đặt theo giờ.',
-            ], 422);
-        }
-
         if ($checkOut->hour >= 20) {
             return response()->json([
                 'message' => 'Sau 20h chỉ nhận đặt qua đêm, không áp dụng đặt theo giờ.',
@@ -850,6 +844,9 @@ class BookingController extends Controller
             'check_in_date'   => $checkIn,
             'check_out_date'  => $checkOut,
 
+            'is_hourly'       => $totals['is_hourly'],
+            'hours'           => $totals['hours'],
+
             'room_details'    => $totals['room_details'],
             'nights'          => $totals['nights'],
             'room_total'      => $totals['room_total'],
@@ -896,9 +893,11 @@ class BookingController extends Controller
         try {
             DB::beginTransaction();
 
+            // Với đặt giờ: dùng thời điểm hiện tại làm mốc kết thúc để tính
             $totals = $this->calculateBookingTotals($booking);
 
-            $booking->status = 'Checked-out';
+            // Chốt trả phòng
+            $booking->status       = 'Checked-out';
             $booking->total_amount = $totals['total_amount'];
             $booking->check_out_at = now();
             $booking->save();
@@ -908,104 +907,197 @@ class BookingController extends Controller
                 $room->save();
             }
 
-            $today = now()->format('Ymd');
+            // Mã hoá đơn
+            $today      = now()->format('Ymd');
             $countToday = Invoice::whereDate('issued_date', today())->count() + 1;
             $invoiceCode = 'INV-' . $today . '-' . str_pad($countToday, 3, '0', STR_PAD_LEFT);
 
+            // Tạo hoá đơn (có amenity_amount)
             $invoice = Invoice::create([
-                'invoice_code' => $invoiceCode,
-                'booking_id' => $booking->id,
-                'issued_date' => now(),
-                'room_amount' => $totals['room_total'],
-                'service_amount' => $totals['service_total'],
+                'invoice_code'    => $invoiceCode,
+                'booking_id'      => $booking->id,
+                'issued_date'     => now(),
+                'room_amount'     => $totals['room_total'],
+                'service_amount'  => $totals['service_total'],
+                'amenity_amount'  => $totals['amenity_total'],
                 'discount_amount' => $totals['discount'],
-                'deposit_amount' => $totals['deposit_amount'],
-                'total_amount' => $totals['total_amount'],
+                'deposit_amount'  => $totals['deposit_amount'],
+                'total_amount'    => $totals['total_amount'],
             ]);
 
+            // Ghi nhận thanh toán
             Payment::create([
-                'invoice_id' => $invoice->id,
-                'amount' => $totals['total_amount'],
-                'method' => 'cash',
+                'invoice_id'       => $invoice->id,
+                'amount'           => $totals['total_amount'],
+                'method'           => 'cash',
                 'transaction_code' => null,
-                'paid_at' => now(),
-                'status' => 'success',
+                'paid_at'          => now(),
+                'status'           => 'success',
             ]);
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Thanh toán tiền mặt và trả phòng thành công!',
-                'booking_id' => $booking->id,
-                'nights' => $totals['nights'],
-                'room_details' => $totals['room_details'],
-                'room_total' => $totals['room_total'],
-                'service_total' => $totals['service_total'],
+                'message'         => 'Thanh toán tiền mặt và trả phòng thành công!',
+                'booking_id'      => $booking->id,
+                'is_hourly'       => $totals['is_hourly'],
+                'hours'           => $totals['hours'],
+                'nights'          => $totals['nights'],
+                'room_details'    => $totals['room_details'],
+                'room_total'      => $totals['room_total'],
+                'service_total'   => $totals['service_total'],
+                'amenity_total'   => $totals['amenity_total'],
                 'discount_amount' => $totals['discount'],
-                'raw_total' => $totals['raw_total'],
-                'deposit_paid' => $totals['is_deposit_paid'] ? 'yes' : 'no',
-                'deposit_amount' => $totals['deposit_amount'],
-                'total_amount' => $totals['total_amount'],
-                'invoice_id' => $invoice->id,
-                'status' => $booking->status,
-                'check_out_at' => $booking->check_out_at,
+                'raw_total'       => $totals['raw_total'],
+                'deposit_paid'    => $totals['is_deposit_paid'] ? 'yes' : 'no',
+                'deposit_amount'  => $totals['deposit_amount'],
+                'total_amount'    => $totals['total_amount'],
+                'invoice_id'      => $invoice->id,
+                'status'          => $booking->status,
+                'check_out_at'    => $booking->check_out_at,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json(['error' => 'Lỗi khi thanh toán: ' . $e->getMessage()], 500);
         }
     }
 
 
-    private function calculateBookingTotals(Booking $booking)
+    /**
+     * Tính tổng tiền của booking (phòng, dịch vụ, tiện nghi), giảm giá, đặt cọc.
+     * - Services: từ quan hệ $booking->services (pivot quantity, có thể có pivot->price)
+     * - Amenities: từ bảng booking_room_amenities (fallback về giá trong bảng amenities nếu row->price null)
+     * Trả về mảng chi tiết + tổng tiền cuối cùng.
+     */
+    private function calculateBookingTotals(Booking $booking): array
     {
-        $checkIn = Carbon::parse($booking->check_in_date);
-        $checkOut = Carbon::parse($booking->check_out_date);
+        $booking->loadMissing(['rooms.roomType', 'services']);
 
-        if ($checkOut->lt($checkIn)) {
-            throw new \Exception('Ngày check-out không hợp lệ (trước ngày check-in)');
+        $isHourly = (int)($booking->is_hourly ?? 0) === 1;
+
+        if ($isHourly) {
+            // ----- Theo giờ -----
+            // GIỮ GIỜ THỰC từ DB, KHÔNG startOfDay
+            $startRaw = $booking->check_in_date;
+            $endRaw   = $booking->check_out_date ?: now();
+
+            $start = Carbon::parse($startRaw)->startOfMinute();
+            $end   = Carbon::parse($endRaw)->startOfMinute();
+
+            // diff âm => dữ liệu sai
+            $minutes = $start->diffInMinutes($end, false);
+            if ($minutes < 0) {
+                throw new \InvalidArgumentException('Thời gian trả phòng nhỏ hơn nhận phòng.');
+            }
+
+            $hours = max(1, (int) ceil($minutes / 60));
+
+
+            $roomTotal   = 0.0;
+            $roomDetails = [];
+            foreach ($booking->rooms as $room) {
+                $rate  = (float)($room->roomType->hourly_rate ?? 0);
+                $total = round($rate * $hours, 0);
+                $roomTotal += $total;
+
+                $roomDetails[] = [
+                    'room_id'     => $room->id,
+                    'room_number' => $room->room_number,
+                    'unit'        => 'hour',
+                    'unit_count'  => $hours,
+                    'base_rate'        => $rate,
+                    'total'       => $total,
+                ];
+            }
+            $nights = 0;
+        } else {
+            // ----- Theo đêm -----
+            $checkIn  = Carbon::parse($booking->check_in_date)->startOfDay();
+            $checkOut = Carbon::parse($booking->check_out_date)->startOfDay();
+            if ($checkOut->lt($checkIn)) {
+                throw new \InvalidArgumentException('Ngày check-out không hợp lệ (trước ngày check-in)');
+            }
+            $nights = max(0, $checkIn->diffInDays($checkOut));
+
+            $roomTotal   = 0.0;
+            $roomDetails = [];
+            foreach ($booking->rooms as $room) {
+                $rate  = (float)($room->roomType->base_rate ?? 0);
+                $total = round($rate * $nights, 0);
+                $roomTotal += $total;
+
+                $roomDetails[] = [
+                    'room_id'     => $room->id,
+                    'room_number' => $room->room_number,
+                    'unit'        => 'night',
+                    'unit_count'  => $nights,
+                    'base_rate'        => $rate,
+                    'total'       => $total,
+                ];
+            }
+            $hours = 0;
         }
 
-        $nights = $checkIn->diffInDays($checkOut);
-        $roomTotal = 0;
-        $roomDetails = [];
+        // ----- Dịch vụ -----
+        $serviceTotal = 0.0;
+        foreach ($booking->services as $service) {
+            $qty  = (int)($service->pivot->quantity ?? 1);
+            $unit = isset($service->pivot->price) ? (float)$service->pivot->price : (float)($service->price ?? 0);
+            $serviceTotal += round($unit * $qty, 0);
+        }
 
-        foreach ($booking->rooms as $room) {
-            $rate = floatval(optional($room->roomType)->base_rate ?? 0);
-            $total = $rate * $nights;
-            $roomTotal += $total;
+        // ----- Tiện nghi phát sinh -----
+        $amenityRows = BookingRoomAmenity::with(['room:id,room_number', 'amenity:id,name,price'])
+            ->where('booking_id', $booking->id)
+            ->get();
 
-            $roomDetails[] = [
-                'room_number' => $room->room_number,
-                'base_rate' => $rate,
-                'total' => $total,
+        $amenityTotal   = 0.0;
+        $amenityDetails = [];
+        foreach ($amenityRows as $row) {
+            $qty  = (int)($row->quantity ?? 1);
+            $unit = is_null($row->price) ? (float)optional($row->amenity)->price : (float)$row->price;
+            $line = round($unit * $qty, 0);
+            $amenityTotal += $line;
+
+            $amenityDetails[] = [
+                'room_id'      => $row->room_id,
+                'room_number'  => optional($row->room)->room_number,
+                'amenity_id'   => $row->amenity_id,
+                'amenity_name' => optional($row->amenity)->name,
+                'price'        => $unit,
+                'quantity'     => $qty,
+                'total'        => $line,
+                'created_at'   => optional($row->created_at)?->toDateTimeString(),
             ];
         }
 
-        $serviceTotal = 0;
-        foreach ($booking->services as $service) {
-            $quantity = intval($service->pivot->quantity ?? 1);
-            $serviceTotal += floatval($service->price) * $quantity;
-        }
+        // ----- Tổng hợp -----
+        $discount      = (float)($booking->discount_amount ?? 0);
+        $rawTotal      = round($roomTotal + $serviceTotal + $amenityTotal, 0);
+        $subtotal      = max(0, $rawTotal - $discount);
 
-        $discountAmount = floatval($booking->discount_amount ?? 0);
-        $rawTotal = $roomTotal + $serviceTotal;
-        $totalAmount = $rawTotal - $discountAmount;
-
-        $depositAmount = floatval($booking->deposit_amount ?? 0);
-        $isDepositPaid = intval($booking->is_deposit_paid ?? 0);
-        $finalTotal = $isDepositPaid ? max(0, $totalAmount - $depositAmount) : $totalAmount;
+        $depositAmount = (float)($booking->deposit_amount ?? 0);
+        $isDepositPaid = (int)($booking->is_deposit_paid ?? 0);
+        $finalTotal    = $isDepositPaid ? max(0, $subtotal - $depositAmount) : $subtotal;
 
         return [
-            'nights' => $nights,
-            'room_details' => $roomDetails,
-            'room_total' => $roomTotal,
-            'service_total' => $serviceTotal,
-            'discount' => $discountAmount,
-            'raw_total' => $rawTotal,
-            'total_amount' => $finalTotal,
-            'deposit_amount' => $depositAmount,
-            'is_deposit_paid' => $isDepositPaid,
+            'is_hourly'        => $isHourly ? 1 : 0,
+            'hours'            => $hours,
+            'nights'           => $nights,
+
+            'room_details'     => $roomDetails,
+            'amenity_details'  => $amenityDetails,
+
+            'room_total'       => $roomTotal,
+            'service_total'    => $serviceTotal,
+            'amenity_total'    => $amenityTotal,
+
+            'discount'         => $discount,
+            'raw_total'        => $rawTotal,
+            'total_amount'     => $finalTotal,
+
+            'deposit_amount'   => $depositAmount,
+            'is_deposit_paid'  => $isDepositPaid,
         ];
     }
 
