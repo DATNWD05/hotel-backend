@@ -15,9 +15,12 @@ class Invoice extends Model
         'amenity_amount',
         'discount_amount',
         'deposit_amount',
-        'total_amount'
+        'total_amount',
     ];
 
+    protected $casts = [
+        'issued_date' => 'datetime',
+    ];
 
     public function booking()
     {
@@ -28,4 +31,5 @@ class Invoice extends Model
     {
         return $this->hasMany(Payment::class);
     }
+    
 }
