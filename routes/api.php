@@ -192,13 +192,13 @@ Route::middleware(['auth:sanctum', "role:1,2,3"])->group(function () {
     // Hóa đơn
     Route::prefix('invoices')->group(function () {
 
-        // Xem danh sách hóa đơn (tùy chọn)
+        // Danh sách hóa đơn
         Route::get('/', [InvoiceController::class, 'index']);
 
-        // Xem chi tiết 1 hóa đơn
-        Route::get('/{id}', [InvoiceController::class, 'show']);
+        // Xem chi tiết hóa đơn
+        Route::get('/{invoice}', [InvoiceController::class, 'show']);
 
-        // (Tùy chọn) Xuất PDF hóa đơn
+        // Xuất PDF hóa đơn theo booking_id
         Route::get('/booking/{booking_id}/print', [InvoiceController::class, 'printInvoice']);
     });
 });
