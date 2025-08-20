@@ -37,6 +37,7 @@ class RoomTypeController extends Controller
             'description'  => 'nullable|string',
             'max_occupancy' => 'required|integer|min:0|max:255',
             'base_rate'    => 'required|numeric|min:100000',
+            'hourly_rate'    => 'required|numeric|min:100000',
         ]);
 
         if ($validator->fails()) {
@@ -79,6 +80,7 @@ class RoomTypeController extends Controller
             'description'  => 'nullable|string',
             'max_occupancy' => 'required|integer|min:0|max:255',
             'base_rate'    => 'required|numeric|min:100000',
+            'hourly_rate'    => 'required|numeric|min:100000',
         ]);
 
         if ($validator->fails()) {
@@ -117,47 +119,6 @@ class RoomTypeController extends Controller
             ], 500);
         }
     }
-
-    // public function trashed()
-    // {
-    //     $trashed = RoomType::onlyTrashed()->get();
-
-    //     return response()->json([
-    //         'message' => 'Danh sách loại phòng đã xóa.',
-    //         'data'    => $trashed
-    //     ]);
-    // }
-
-    // public function restore($id)
-    // {
-    //     $roomType = RoomType::withTrashed()->find($id);
-    //     if (!$roomType || !$roomType->trashed()) {
-    //         return response()->json([
-    //             'message' => 'Loại phòng không tồn tại hoặc chưa bị xóa.'
-    //         ], 404);
-    //     }
-
-    //     $roomType->restore();
-    //     return response()->json([
-    //         'message' => 'Khôi phục loại phòng thành công.',
-    //         'data'    => $roomType
-    //     ]);
-    // }
-
-    // public function forceDelete($id)
-    // {
-    //     $roomType = RoomType::withTrashed()->find($id);
-    //     if (!$roomType || !$roomType->trashed()) {
-    //         return response()->json([
-    //             'message' => 'Không thể xóa vĩnh viễn loại phòng chưa bị xóa mềm.'
-    //         ], 400);
-    //     }
-
-    //     $roomType->forceDelete();
-    //     return response()->json([
-    //         'message' => 'Đã xóa vĩnh viễn loại phòng.'
-    //     ]);
-    // }
 
     public function syncAmenities(Request $request, RoomType $room_type)
     {

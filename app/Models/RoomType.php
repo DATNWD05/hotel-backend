@@ -14,6 +14,7 @@ class RoomType extends Model
         'description',
         'max_occupancy',
         'base_rate',
+        'hourly_rate',
     ];
 
     /**
