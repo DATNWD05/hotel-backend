@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\Rule;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class RoomTypeController extends Controller
@@ -31,14 +32,41 @@ class RoomTypeController extends Controller
 
     public function store(Request $request)
     {
+        $messages = [
+            'code.required' => 'Mã loại phòng là bắt buộc.',
+            'code.string'   => 'Mã loại phòng phải là chuỗi ký tự.',
+            'code.max'      => 'Mã loại phòng không được vượt quá 20 ký tự.',
+            'code.unique'   => 'Mã loại phòng đã tồn tại.',
+
+            'name.required' => 'Tên loại phòng là bắt buộc.',
+            'name.string'   => 'Tên loại phòng phải là chuỗi ký tự.',
+            'name.max'      => 'Tên loại phòng không được vượt quá 255 ký tự.',
+            'name.unique'   => 'Tên loại phòng đã tồn tại.',
+
+            'description.string' => 'Mô tả loại phòng phải là chuỗi ký tự.',
+
+            'max_occupancy.required' => 'Sức chứa tối đa là bắt buộc.',
+            'max_occupancy.integer'  => 'Sức chứa tối đa phải là số nguyên.',
+            'max_occupancy.min'      => 'Sức chứa tối thiểu phải từ 0.',
+            'max_occupancy.max'      => 'Sức chứa tối đa không vượt quá 255.',
+
+            'base_rate.required' => 'Giá cơ bản là bắt buộc.',
+            'base_rate.numeric'  => 'Giá cơ bản phải là số.',
+            'base_rate.min'      => 'Giá cơ bản phải từ 100.000 VNĐ trở lên.',
+
+            'hourly_rate.required' => 'Giá theo giờ là bắt buộc.',
+            'hourly_rate.numeric'  => 'Giá theo giờ phải là số.',
+            'hourly_rate.min'      => 'Giá theo giờ phải từ 100.000 VNĐ trở lên.',
+        ];
+
         $validator = Validator::make($request->all(), [
             'code'         => 'required|string|max:20|unique:room_types,code',
             'name'         => 'required|string|max:255|unique:room_types,name',
             'description'  => 'nullable|string',
             'max_occupancy' => 'required|integer|min:0|max:255',
             'base_rate'    => 'required|numeric|min:100000',
-            'hourly_rate'    => 'required|numeric|min:100000',
-        ]);
+            'hourly_rate'  => 'required|numeric|min:100000',
+        ], $messages);
 
         if ($validator->fails()) {
             return response()->json([
@@ -62,6 +90,7 @@ class RoomTypeController extends Controller
         }
     }
 
+
     public function show(RoomType $room_type)
     {
         $room_type->load('amenities');
@@ -73,37 +102,70 @@ class RoomTypeController extends Controller
     }
 
     public function update(Request $request, RoomType $room_type)
-    {
-        $validator = Validator::make($request->all(), [
-            'code'         => 'required|string|max:20|unique:room_types,code,' . $room_type->id,
-            'name'         => 'required|string|max:255|unique:room_types,name,' . $room_type->id,
-            'description'  => 'nullable|string',
-            'max_occupancy' => 'required|integer|min:0|max:255',
-            'base_rate'    => 'required|numeric|min:100000',
-            'hourly_rate'    => 'required|numeric|min:100000',
-        ]);
+{
+    $messages = [
+        'code.required' => 'Mã loại phòng là bắt buộc.',
+        'code.string'   => 'Mã loại phòng phải là chuỗi ký tự.',
+        'code.max'      => 'Mã loại phòng không được vượt quá 20 ký tự.',
+        'code.unique'   => 'Mã loại phòng đã tồn tại.',
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Dữ liệu không hợp lệ.',
-                'errors'  => $validator->errors()
-            ], 422);
-        }
+        'name.required' => 'Tên loại phòng là bắt buộc.',
+        'name.string'   => 'Tên loại phòng phải là chuỗi ký tự.',
+        'name.max'      => 'Tên loại phòng không được vượt quá 255 ký tự.',
+        'name.unique'   => 'Tên loại phòng đã tồn tại.',
 
-        try {
-            $room_type->update($validator->validated());
-            return response()->json([
-                'message' => 'Cập nhật loại phòng thành công.',
-                'data'    => $room_type
-            ]);
-        } catch (QueryException $e) {
-            Log::error('Lỗi cập nhật loại phòng: ' . $e->getMessage());
-            return response()->json([
-                'message' => 'Lỗi khi cập nhật loại phòng.',
-                'error'   => $e->getMessage()
-            ], 500);
-        }
+        'description.string' => 'Mô tả loại phòng phải là chuỗi ký tự.',
+
+        'max_occupancy.required' => 'Sức chứa tối đa là bắt buộc.',
+        'max_occupancy.integer'  => 'Sức chứa tối đa phải là số nguyên.',
+        'max_occupancy.min'      => 'Sức chứa tối thiểu phải từ 0.',
+        'max_occupancy.max'      => 'Sức chứa tối đa không vượt quá 255.',
+
+        'base_rate.required' => 'Giá cơ bản là bắt buộc.',
+        'base_rate.numeric'  => 'Giá cơ bản phải là số.',
+        'base_rate.min'      => 'Giá cơ bản phải từ 100.000 VNĐ trở lên.',
+
+        'hourly_rate.required' => 'Giá theo giờ là bắt buộc.',
+        'hourly_rate.numeric'  => 'Giá theo giờ phải là số.',
+        'hourly_rate.min'      => 'Giá theo giờ phải từ 100.000 VNĐ trở lên.',
+    ];
+
+    $validator = Validator::make($request->all(), [
+        'code'          => [
+            'required','string','max:20',
+            Rule::unique('room_types','code')->ignore($room_type->id),
+        ],
+        'name'          => [
+            'required','string','max:255',
+            Rule::unique('room_types','name')->ignore($room_type->id),
+        ],
+        'description'   => 'nullable|string',
+        'max_occupancy' => 'required|integer|min:0|max:255',
+        'base_rate'     => 'required|numeric|min:100000',
+        'hourly_rate'   => 'required|numeric|min:100000',
+    ], $messages);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'message' => 'Dữ liệu không hợp lệ.',
+            'errors'  => $validator->errors()
+        ], 422);
     }
+
+    try {
+        $room_type->update($validator->validated());
+        return response()->json([
+            'message' => 'Cập nhật loại phòng thành công.',
+            'data'    => $room_type->fresh()
+        ]);
+    } catch (QueryException $e) {
+        Log::error('Lỗi cập nhật loại phòng: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'Lỗi khi cập nhật loại phòng.',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
+}
 
     public function destroy(RoomType $room_type)
     {
