@@ -80,7 +80,7 @@ class BookingController extends Controller
     public function getAvailableRooms(Request $request)
     {
         $validated = $request->validate([
-            'check_in_date'  => 'required|date|after_or_equal:now',
+            'check_in_date'  => 'required|date',
             'check_out_date' => 'required|date|after:check_in_date',
             'room_type_id'   => 'nullable|exists:room_types,id',
             'is_hourly'      => 'nullable|boolean',
@@ -91,18 +91,6 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
-        // ✅ Nếu đặt theo giờ thì ngày check-in và check-out phải cùng ngày
-        if ($isHourly && !$checkIn->isSameDay($checkOut)) {
-            return response()->json([
-                'message' => 'Đặt phòng theo giờ yêu cầu check-in và check-out trong cùng một ngày.',
-            ], 422);
-        }
-
-        if ($checkOut->hour >= 20) {
-            return response()->json([
-                'message' => 'Sau 20h chỉ nhận đặt qua đêm, không áp dụng đặt theo giờ.',
-            ], 422);
-        }
 
         $query = Room::query();
         if (!empty($validated['room_type_id'])) {
@@ -130,12 +118,17 @@ class BookingController extends Controller
         });
 
         return response()->json([
-            'data' => $rooms->values()->map(function ($room) {
+            'data' => $rooms->values()->map(function ($room) use ($isHourly) {
                 return [
                     'id'           => $room->id,
                     'room_number'  => $room->room_number,
                     'room_type_id' => $room->room_type_id,
                     'available'    => true,
+                    'room_type'    => [
+                        'id'         => $room->roomType->id,
+                        'name'       => $room->roomType->name,
+                        'base_rate'  => $isHourly ? ($room->roomType->hourly_rate ?? 0) : ($room->roomType->base_rate ?? 0),
+                    ],
                 ];
             }),
         ]);
@@ -149,7 +142,7 @@ class BookingController extends Controller
         $validated = $request->validate([
             'room_ids' => 'required|array|min:1',
             'room_ids.*' => 'required|exists:rooms,id',
-            'check_in_date' => 'required|date|after_or_equal:now',
+            'check_in_date' => 'required|date',
             'check_out_date' => 'required|date|after:check_in_date',
             'is_hourly' => 'nullable|boolean',
         ]);
@@ -216,7 +209,7 @@ class BookingController extends Controller
             'room_ids'               => 'required|array|min:1',
             'room_ids.*'             => 'required|exists:rooms,id',
 
-            'check_in_date'          => 'required|date|after_or_equal:now',
+            'check_in_date'          => 'required|date',
             'check_out_date'         => 'required|date|after:check_in_date',
 
             'is_hourly'              => 'nullable|boolean',
@@ -239,15 +232,9 @@ class BookingController extends Controller
 
         if ($isHourly) {
             // Kiểm tra giờ đặt phòng
-            if ($checkIn->hour >= 20) {
+            if ($checkIn->hour >= 22) {
                 return response()->json([
-                    'message' => 'Không thể đặt phòng theo giờ sau 20h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
-                ], 422);
-            }
-            // Kiểm tra ngày phải trùng nhau
-            if (!$checkIn->isSameDay($checkOut)) {
-                return response()->json([
-                    'message' => 'Đặt phòng theo giờ phải có ngày check-in và check-out trùng nhau.',
+                    'message' => 'Không thể đặt phòng theo giờ sau 22h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
                 ], 422);
             }
         } else {
@@ -402,7 +389,7 @@ class BookingController extends Controller
             'room_ids'               => 'sometimes|array|min:1',
             'room_ids.*'             => 'exists:rooms,id',
 
-            'check_in_date'          => 'sometimes|date|after_or_equal:now',
+            'check_in_date'          => 'sometimes|date',
             'check_out_date'         => 'sometimes|date|after:check_in_date',
 
             'check_in_at'            => 'nullable|date',
@@ -429,25 +416,9 @@ class BookingController extends Controller
 
         // Kiểm tra quy tắc đặt phòng giống store
         if ($isHourly) {
-            if ($checkIn->hour >= 20) {
-                return response()->json([
-                    'message' => 'Không thể đặt phòng theo giờ sau 20h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
-                ], 422);
-            }
-            if (!$checkIn->isSameDay($checkOut)) {
-                return response()->json([
-                    'message' => 'Đặt phòng theo giờ phải có ngày check-in và check-out trùng nhau.',
-                ], 422);
-            }
-        } else {
             if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
                 return response()->json([
                     'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm.',
-                ], 422);
-            }
-            if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
-                return response()->json([
-                    'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
                 ], 422);
             }
         }

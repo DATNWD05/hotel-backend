@@ -64,6 +64,7 @@ class DepositLinkMail extends Mailable
     </ul>
 
     <p style='font-size: 16px; color: #c0392b;'><strong>⚠️ Lưu ý:</strong> Sau khi chuyển khoản, vui lòng chụp ảnh biên lai thanh toán và gửi vào Zalo theo số <strong>0912 345 678</strong> để được xác nhận giữ phòng.</p>
+    <p style='font-size: 16px; color: #c0392b;'><strong>⏰ Quan trọng:</strong> Nếu sau <strong>2 tiếng</strong> kể từ khi đặt phòng quý khách chưa hoàn tất thanh toán tiền đặt cọc, hệ thống sẽ tự động hủy đơn đặt phòng.</p>
 
     <p style='font-size: 16px; color: #333;'>Xin chân thành cảm ơn quý khách đã tin tưởng và sử dụng dịch vụ!</p>
 
