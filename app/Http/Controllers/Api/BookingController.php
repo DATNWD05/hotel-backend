@@ -231,18 +231,6 @@ class BookingController extends Controller
         $checkOut = Carbon::parse($validated['check_out_date']);
 
         if ($isHourly) {
-            // Kiểm tra giờ đặt phòng
-            if ($checkIn->hour >= 22) {
-                return response()->json([
-                    'message' => 'Không thể đặt phòng theo giờ sau 22h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
-                ], 422);
-            }
-        } else {
-            if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
-                return response()->json([
-                    'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm (qua ngày hôm sau).',
-                ], 422);
-            }
             if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
                 return response()->json([
                     'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
@@ -414,14 +402,6 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($newCheckIn);
         $checkOut = Carbon::parse($newCheckOut);
 
-        // Kiểm tra quy tắc đặt phòng giống store
-        if ($isHourly) {
-            if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
-                return response()->json([
-                    'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm.',
-                ], 422);
-            }
-        }
 
         // Kiểm tra trùng phòng nếu đổi phòng hoặc ngày/giờ
         if ($request->hasAny(['room_ids', 'check_in_date', 'check_out_date', 'is_hourly'])) {
