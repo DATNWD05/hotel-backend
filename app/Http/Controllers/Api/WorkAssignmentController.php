@@ -24,15 +24,15 @@ class WorkAssignmentController extends Controller
     // Danh sách phân công
     public function index(Request $request)
     {
-        $perPage = $request->input('per_page', 10);
+        // $perPage = $request->input('per_page', 10);
         $assignments = WorkAssignment::with(['employee.user.role', 'shift'])
             ->orderByDesc('work_date')
-            ->paginate($perPage);
+            ->get();
 
         return response()->json([
             'success' => true,
             'message' => 'Danh sách phân công ca làm việc',
-            'data' => $assignments
+            'data' => $assignments  
         ]);
     }
 

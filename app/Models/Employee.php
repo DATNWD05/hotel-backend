@@ -56,4 +56,8 @@ class Employee extends Model
     {
         return $this->hasMany(EmployeeFace::class);
     }
+    public function workAssignments()
+    {
+        return $this->hasMany(WorkAssignment::class);
+    }
 }

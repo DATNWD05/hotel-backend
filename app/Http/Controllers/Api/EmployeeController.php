@@ -24,17 +24,17 @@ class EmployeeController extends Controller
     }
     public function index()
     {
-        $data = Employee::with(['department', 'role', 'user','user.role'])->paginate(10);
+        $data = Employee::with(['department', 'role', 'user','user.role'])->get();
 
         return response()->json([
             'status' => 'success',
-            'data' => $data->items(),
-            'pagination' => [
-                'current_page' => $data->currentPage(),
-                'total_pages' => $data->lastPage(),
-                'total_items' => $data->total(),
-                'per_page' => $data->perPage(),
-            ],
+            'data' => $data,
+            // 'pagination' => [
+            //     'current_page' => $data->currentPage(),
+            //     'total_pages' => $data->lastPage(),
+            //     'total_items' => $data->total(),
+            //     'per_page' => $data->perPage(),
+            // ],
         ]);
     }
 
