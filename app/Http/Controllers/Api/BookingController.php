@@ -80,7 +80,7 @@ class BookingController extends Controller
     public function getAvailableRooms(Request $request)
     {
         $validated = $request->validate([
-            'check_in_date'  => 'required|date|after_or_equal:now',
+            'check_in_date'  => 'required|date',
             'check_out_date' => 'required|date|after:check_in_date',
             'room_type_id'   => 'nullable|exists:room_types,id',
             'is_hourly'      => 'nullable|boolean',
@@ -142,7 +142,7 @@ class BookingController extends Controller
         $validated = $request->validate([
             'room_ids' => 'required|array|min:1',
             'room_ids.*' => 'required|exists:rooms,id',
-            'check_in_date' => 'required|date|after_or_equal:now',
+            'check_in_date' => 'required|date',
             'check_out_date' => 'required|date|after:check_in_date',
             'is_hourly' => 'nullable|boolean',
         ]);
@@ -209,7 +209,7 @@ class BookingController extends Controller
             'room_ids'               => 'required|array|min:1',
             'room_ids.*'             => 'required|exists:rooms,id',
 
-            'check_in_date'          => 'required|date|after_or_equal:now',
+            'check_in_date'          => 'required|date',
             'check_out_date'         => 'required|date|after:check_in_date',
 
             'is_hourly'              => 'nullable|boolean',
@@ -389,7 +389,7 @@ class BookingController extends Controller
             'room_ids'               => 'sometimes|array|min:1',
             'room_ids.*'             => 'exists:rooms,id',
 
-            'check_in_date'          => 'sometimes|date|after_or_equal:now',
+            'check_in_date'          => 'sometimes|date',
             'check_out_date'         => 'sometimes|date|after:check_in_date',
 
             'check_in_at'            => 'nullable|date',
