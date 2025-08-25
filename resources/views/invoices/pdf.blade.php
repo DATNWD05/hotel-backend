@@ -1,16 +1,108 @@
 @php
 use Carbon\Carbon;
+
+/**
+* Helper: format tiền
+*/
+if (!function_exists('vnd')) {
+function vnd($n) {
+try { return number_format((float)$n, 0, ',', '.') . ' đ'; }
+catch (\Throwable $e) { return '0 đ'; }
+}
+}
+
+/**
+* Phát hiện có payload mới hay không
+*/
+$hasPayload = isset($payload) && is_array($payload);
+
+/**
+* Lấy meta giờ/đêm + ngày giờ hiển thị
+*/
+if ($hasPayload) {
+$isHourly = (int)($payload['meta']['is_hourly'] ?? 0) === 1;
+$durationLabel = $payload['meta']['duration_label'] ?? ($isHourly ? 'hours' : 'nights');
+$durationValue = (int)($payload['meta']['duration_value'] ?? 0);
+$fmtCheckin = $payload['meta']['formatted_checkin'] ?? null;
+$fmtCheckout = $payload['meta']['formatted_checkout'] ?? null;
+$fmtIssued = $payload['meta']['formatted_issued'] ?? null;
+
+$roomLines = $payload['room_lines'] ?? [];
+$serviceLines = $payload['service_lines'] ?? [];
+$amenityLines = $payload['amenity_lines'] ?? [];
+
+$saved = $payload['totals']['saved'] ?? [];
+$roomAmountSaved = $saved['room_amount'] ?? 0;
+$serviceAmountSaved = $saved['service_amount'] ?? 0;
+$amenityAmountSaved = $saved['amenity_amount'] ?? 0;
+$discountSaved = $saved['discount_amount'] ?? 0;
+$depositSaved = $saved['deposit_amount'] ?? 0;
+$finalAmountSaved = $saved['final_amount'] ?? 0;
+
+$invoiceCode = $payload['invoice']['invoice_code'] ?? ($invoice->invoice_code ?? '');
+$issuedDate = $fmtIssued ?: (optional($invoice->issued_date)->format('d/m/Y') ?? '');
+$customerName = $payload['booking']['customer']['name'] ?? ($invoice->booking->customer->name ?? '---');
+$customerEmail = $payload['booking']['customer']['email'] ?? ($invoice->booking->customer->email ?? '---');
+$customerPhone = $payload['booking']['customer']['phone'] ?? ($invoice->booking->customer->phone ?? '---');
+} else {
+// Fallback: controller cũ
+$isHourly = (int)($invoice->booking->is_hourly ?? 0) === 1;
+$durationLabel = $isHourly ? 'hours' : 'nights';
+
+$fmtCheckin = optional($invoice->booking->check_in_date)->format('d/m/Y');
+$fmtCheckout = optional($invoice->booking->check_out_date)->format('d/m/Y');
+$issuedDate = optional($invoice->created_at)->format('d/m/Y');
+
+// Từ controller cũ, room đã được gắn $room->nights và $room->room_total (theo ngày)
+// Nếu là theo giờ thì controller cũ không có — nên sẽ chỉ hiển thị theo đêm.
+$roomLines = collect($invoice->booking->rooms ?? [])->map(function($r) {
+return [
+'room_id' => $r->id ?? null,
+'room_number' => $r->room_number ?? '',
+'unit' => 'night',
+'unit_count' => (int)($r->nights ?? 0),
+'base_rate' => (float)($r->roomType->base_rate ?? 0),
+'total' => (float)($r->room_total ?? 0),
+'room_type' => $r->roomType->name ?? '---',
+];
+})->toArray();
+
+$serviceLines = collect($invoice->booking->services ?? [])->map(function($s) {
+$qty = (int)($s->pivot->quantity ?? 0);
+$price = (float)($s->pivot->price ?? $s->price ?? 0);
+return [
+'service_id' => $s->id ?? null,
+'name' => $s->name ?? '',
+'price' => $price,
+'quantity' => $qty,
+'total' => $price * $qty,
+];
+})->toArray();
+
+// Controller cũ chưa truyền tiện nghi phát sinh → để mảng rỗng
+$amenityLines = [];
+
+// Totals: dùng số đã lưu trong invoice (ưu tiên “chốt sổ”)
+$roomAmountSaved = (float)($invoice->room_amount ?? 0);
+$serviceAmountSaved = (float)($invoice->service_amount ?? 0);
+$amenityAmountSaved = (float)($invoice->amenity_amount ?? 0); // cột mới nếu có
+$discountSaved = (float)($invoice->discount_amount ?? 0);
+$depositSaved = (float)($invoice->deposit_amount ?? 0);
+$finalAmountSaved = (float)($invoice->total_amount ?? ($roomAmountSaved + $serviceAmountSaved + $amenityAmountSaved - $discountSaved - $depositSaved));
+
+$invoiceCode = $invoice->invoice_code ?? '';
+$customerName = $invoice->booking->customer->name ?? '---';
+$customerEmail = $invoice->booking->customer->email ?? '---';
+$customerPhone = $invoice->booking->customer->phone ?? '---';
+}
 @endphp
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 
 <head>
-
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-
+    <meta charset="UTF-8" />
+    <title>Hóa đơn {{ $invoiceCode }}</title>
     <style>
         body {
             font-family: DejaVu Sans, sans-serif;
@@ -87,6 +179,11 @@ use Carbon\Carbon;
             font-size: 15px;
         }
 
+        .muted {
+            color: #666;
+            font-style: italic;
+        }
+
         .thank-you {
             text-align: center;
             margin-top: 30px;
@@ -105,20 +202,32 @@ use Carbon\Carbon;
 </head>
 
 <body>
-
     <div class="brand">🏨 KHÁCH SẠN HOBILO</div>
     <div class="sub-brand">Hóa đơn điện tử – Thanh toán dịch vụ lưu trú</div>
 
     <h2>HÓA ĐƠN THANH TOÁN</h2>
 
     <div class="invoice-info">
-        <p><strong>Mã hóa đơn:</strong> {{ $invoice->invoice_code }}</p>
-        <p><strong>Ngày tạo:</strong> {{ Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</p>
-        <p><strong>Check-in:</strong> {{ Carbon::parse($invoice->booking->check_in_date)->format('d/m/Y') }}</p>
-        <p><strong>Check-out:</strong> {{ Carbon::parse($invoice->booking->check_out_date)->format('d/m/Y') }}</p>
-        <p><strong>Khách hàng:</strong> {{ $invoice->booking->customer->name ?? '---' }}</p>
-        <p><strong>Email:</strong> {{ $invoice->booking->customer->email ?? '---' }}</p>
-        <p><strong>SĐT:</strong> {{ $invoice->booking->customer->phone ?? '---' }}</p>
+        <p><strong>Mã hóa đơn:</strong> {{ $invoiceCode }}</p>
+        <p><strong>Ngày tạo:</strong> {{ $issuedDate }}</p>
+        <p>
+            <strong>Check-in:</strong>
+            {{ $fmtCheckin ?? optional($invoice->booking->check_in_date)->format('d/m/Y H:i') }}
+        </p>
+        <p>
+            <strong>Check-out:</strong>
+            {{ $fmtCheckout ?? optional($invoice->booking->check_out_date)->format('d/m/Y H:i') }}
+        </p>
+        <p><strong>Hình thức tính:</strong>
+            @if($isHourly)
+            Theo giờ ({{ $durationValue }} giờ)
+            @else
+            Theo ngày ({{ $durationValue }} đêm)
+            @endif
+        </p>
+        <p><strong>Khách hàng:</strong> {{ $customerName }}</p>
+        <p><strong>Email:</strong> {{ $customerEmail }}</p>
+        <p><strong>SĐT:</strong> {{ $customerPhone }}</p>
     </div>
 
     <table>
@@ -132,63 +241,82 @@ use Carbon\Carbon;
             </tr>
         </thead>
         <tbody>
-            <!-- Chi tiết phòng -->
-            @if(count($invoice->booking->rooms ?? []))
+            {{-- PHÒNG --}}
+            @if(!empty($roomLines))
             <tr class="group-header">
                 <td colspan="5">Chi tiết phòng</td>
             </tr>
-            @foreach ($invoice->booking->rooms as $room)
+            @foreach ($roomLines as $line)
+            @php
+            $unitText = ($line['unit'] ?? 'night') === 'hour' ? 'giờ' : 'đêm';
+            $labelLeft = 'Phòng ' . ($line['room_number'] ?? '');
+            $roomTypeName = $line['room_type'] ?? ($invoice->booking->rooms->firstWhere('room_number', $line['room_number'])->roomType->name ?? '---');
+            @endphp
             <tr>
-                <td class="label">Phòng {{ $room->room_number }}</td>
-                <td>{{ $room->roomType->name ?? '---' }}</td>
-                <td>{{ $room->nights }} đêm</td>
-                <td>{{ number_format($room->roomType->base_rate ?? 0, 0, ',', '.') }} đ</td>
-                <td>{{ number_format($room->room_total ?? 0, 0, ',', '.') }} đ</td>
+                <td class="label">{{ $labelLeft }}</td>
+                <td>{{ $roomTypeName }}</td>
+                <td>{{ (int)($line['unit_count'] ?? 0) }} {{ $unitText }}</td>
+                <td>{{ vnd($line['base_rate'] ?? 0) }}</td>
+                <td>{{ vnd($line['total'] ?? 0) }}</td>
             </tr>
             @endforeach
             @endif
 
-            <!-- Dịch vụ -->
-            @if(count($invoice->booking->services ?? "Không có dịch vụ nào được sử dụng"))
+            {{-- DỊCH VỤ --}}
+            @if(!empty($serviceLines))
             <tr class="group-header">
                 <td colspan="5">Dịch vụ đã sử dụng</td>
             </tr>
-            @foreach ($invoice->booking->services as $service)
-            @php
-            $qty = $service->pivot->quantity ?? 0;
-            $price = $service->price ?? 0;
-            $total = $qty * $price;
-            @endphp
+            @foreach ($serviceLines as $s)
             <tr>
                 <td class="label">Dịch vụ</td>
-                <td>{{ $service->name }}</td>
-                <td>{{ $qty }}</td>
-                <td>{{ number_format($price, 0, ',', '.') }} đ</td>
-                <td>{{ number_format($total, 0, ',', '.') }} đ</td>
+                <td>{{ $s['name'] ?? '' }}</td>
+                <td>{{ (int)($s['quantity'] ?? 0) }}</td>
+                <td>{{ vnd($s['price'] ?? 0) }}</td>
+                <td>{{ vnd($s['total'] ?? 0) }}</td>
             </tr>
             @endforeach
             @endif
 
-            <!-- Điều chỉnh -->
+            {{-- TIỆN NGHI PHÁT SINH --}}
+            @if(!empty($amenityLines))
+            <tr class="group-header">
+                <td colspan="5">Tiện nghi phát sinh</td>
+            </tr>
+            @foreach ($amenityLines as $a)
+            <tr>
+                <td class="label">Tiện nghi</td>
+                <td>
+                    {{ $a['amenity_name'] ?? '' }}
+                    <span class="muted">(@if(!empty($a['room_number'])) phòng {{ $a['room_number'] }} @endif)</span>
+                </td>
+                <td>{{ (int)($a['quantity'] ?? 0) }}</td>
+                <td>{{ vnd($a['price'] ?? 0) }}</td>
+                <td>{{ vnd($a['total'] ?? 0) }}</td>
+            </tr>
+            @endforeach
+            @endif
+
+            {{-- CÁC KHOẢN ĐIỀU CHỈNH --}}
             <tr class="group-header">
                 <td colspan="5">Các khoản điều chỉnh</td>
             </tr>
             <tr>
                 <td class="label">Giảm giá</td>
                 <td colspan="3"></td>
-                <td>-{{ number_format($invoice->discount_amount, 0, ',', '.') }} đ</td>
+                <td>-{{ vnd($discountSaved) }}</td>
             </tr>
             <tr>
                 <td class="label">Đặt cọc</td>
                 <td colspan="3"></td>
-                <td>-{{ number_format($invoice->deposit_amount, 0, ',', '.') }} đ</td>
+                <td>-{{ vnd($depositSaved) }}</td>
             </tr>
 
-            <!-- Tổng cộng -->
+            {{-- TỔNG CỘNG (ưu tiên số đã chốt trong hóa đơn) --}}
             <tr class="total-row">
                 <td class="label">TỔNG CỘNG</td>
                 <td colspan="3"></td>
-                <td>{{ number_format($invoice->total_amount, 0, ',', '.') }} đ</td>
+                <td>{{ vnd($finalAmountSaved) }}</td>
             </tr>
         </tbody>
     </table>
@@ -202,7 +330,6 @@ use Carbon\Carbon;
         Hotline: 0862 332 128 – Email: support@hobilo.vn<br>
         Địa chỉ: Trịnh Văn Bô, Nam Từ Liêm, Hà Nội
     </div>
-
 </body>
 
 </html>
