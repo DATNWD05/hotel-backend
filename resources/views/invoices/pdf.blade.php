@@ -45,7 +45,7 @@ $customerName = $payload['booking']['customer']['name'] ?? ($invoice->booking->c
 $customerEmail = $payload['booking']['customer']['email'] ?? ($invoice->booking->customer->email ?? '---');
 $customerPhone = $payload['booking']['customer']['phone'] ?? ($invoice->booking->customer->phone ?? '---');
 } else {
-// Fallback: controller cũ
+// Fallback controller cũ
 $isHourly = (int)($invoice->booking->is_hourly ?? 0) === 1;
 $durationLabel = $isHourly ? 'hours' : 'nights';
 
@@ -53,8 +53,6 @@ $fmtCheckin = optional($invoice->booking->check_in_date)->format('d/m/Y');
 $fmtCheckout = optional($invoice->booking->check_out_date)->format('d/m/Y');
 $issuedDate = optional($invoice->created_at)->format('d/m/Y');
 
-// Từ controller cũ, room đã được gắn $room->nights và $room->room_total (theo ngày)
-// Nếu là theo giờ thì controller cũ không có — nên sẽ chỉ hiển thị theo đêm.
 $roomLines = collect($invoice->booking->rooms ?? [])->map(function($r) {
 return [
 'room_id' => $r->id ?? null,
@@ -79,13 +77,13 @@ return [
 ];
 })->toArray();
 
-// Controller cũ chưa truyền tiện nghi phát sinh → để mảng rỗng
+// Controller cũ chưa có tiện nghi phát sinh
 $amenityLines = [];
 
-// Totals: dùng số đã lưu trong invoice (ưu tiên “chốt sổ”)
+// Totals: ưu tiên số đã lưu trong invoice (chốt sổ)
 $roomAmountSaved = (float)($invoice->room_amount ?? 0);
 $serviceAmountSaved = (float)($invoice->service_amount ?? 0);
-$amenityAmountSaved = (float)($invoice->amenity_amount ?? 0); // cột mới nếu có
+$amenityAmountSaved = (float)($invoice->amenity_amount ?? 0);
 $discountSaved = (float)($invoice->discount_amount ?? 0);
 $depositSaved = (float)($invoice->deposit_amount ?? 0);
 $finalAmountSaved = (float)($invoice->total_amount ?? ($roomAmountSaved + $serviceAmountSaved + $amenityAmountSaved - $discountSaved - $depositSaved));
@@ -108,28 +106,28 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
             font-family: DejaVu Sans, sans-serif;
             font-size: 14px;
             color: #333;
-            padding: 40px;
+            padding: 40px
         }
 
         .brand {
             text-align: center;
             font-size: 22px;
             font-weight: bold;
-            color: #007BFF;
+            color: #007BFF
         }
 
         .sub-brand {
             text-align: center;
             font-size: 13px;
             color: #666;
-            margin-bottom: 20px;
+            margin-bottom: 20px
         }
 
         h2 {
             text-align: center;
             margin: 0 0 20px;
             font-size: 18px;
-            text-transform: uppercase;
+            text-transform: uppercase
         }
 
         .invoice-info {
@@ -137,31 +135,53 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
             padding: 15px;
             margin-bottom: 25px;
             background: #f9f9f9;
-            border-radius: 5px;
+            border-radius: 5px
+        }
+
+        /* ---- 2 cột dùng TABLE để DomPDF render ổn định ---- */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        .info-table td {
+            vertical-align: top;
+            padding: 6px 10px
+        }
+
+        .info-left {
+            width: 55%;
+            text-align: left
+        }
+
+        .info-right {
+            width: 45%;
+            text-align: left;
+            border-left: 1px dashed #ddd
         }
 
         .invoice-info p {
-            margin: 6px 0;
+            margin: 6px 0
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 13px
         }
 
         th,
         td {
             padding: 8px 10px;
             border: 1px solid #ddd;
-            text-align: right;
+            text-align: right
         }
 
         th.label,
         td.label {
             text-align: left;
             background: #f1f1f1;
-            font-weight: bold;
+            font-weight: bold
         }
 
         tr.group-header td {
@@ -169,26 +189,26 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
             font-weight: bold;
             text-align: left;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: .5px
         }
 
         tr.total-row td {
             font-weight: bold;
             background: #d4edda;
             color: #155724;
-            font-size: 15px;
+            font-size: 15px
         }
 
         .muted {
             color: #666;
-            font-style: italic;
+            font-style: italic
         }
 
         .thank-you {
             text-align: center;
             margin-top: 30px;
             font-size: 14px;
-            color: #444;
+            color: #444
         }
 
         .footer {
@@ -196,7 +216,7 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
             font-size: 13px;
             margin-top: 25px;
             color: #888;
-            font-style: italic;
+            font-style: italic
         }
     </style>
 </head>
@@ -208,26 +228,31 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
     <h2>HÓA ĐƠN THANH TOÁN</h2>
 
     <div class="invoice-info">
-        <p><strong>Mã hóa đơn:</strong> {{ $invoiceCode }}</p>
-        <p><strong>Ngày tạo:</strong> {{ $issuedDate }}</p>
-        <p>
-            <strong>Check-in:</strong>
-            {{ $fmtCheckin ?? optional($invoice->booking->check_in_date)->format('d/m/Y H:i') }}
-        </p>
-        <p>
-            <strong>Check-out:</strong>
-            {{ $fmtCheckout ?? optional($invoice->booking->check_out_date)->format('d/m/Y H:i') }}
-        </p>
-        <p><strong>Hình thức tính:</strong>
-            @if($isHourly)
-            Theo giờ ({{ $durationValue }} giờ)
-            @else
-            Theo ngày ({{ $durationValue }} đêm)
-            @endif
-        </p>
-        <p><strong>Khách hàng:</strong> {{ $customerName }}</p>
-        <p><strong>Email:</strong> {{ $customerEmail }}</p>
-        <p><strong>SĐT:</strong> {{ $customerPhone }}</p>
+        <table class="info-table">
+            <tr>
+                <!-- Cột trái: thông tin hóa đơn -->
+                <td class="info-left">
+                    <p><strong>Mã hóa đơn:</strong> {{ $invoiceCode }}</p>
+                    <p><strong>Ngày tạo:</strong> {{ $issuedDate }}</p>
+                    <p><strong>Check-in:</strong> {{ $fmtCheckin ?? optional($invoice->booking->check_in_date)->format('d/m/Y H:i') }}</p>
+                    <p><strong>Check-out:</strong> {{ $fmtCheckout ?? optional($invoice->booking->check_out_date)->format('d/m/Y H:i') }}</p>
+                    <p><strong>Hình thức tính:</strong>
+                        @if($isHourly)
+                        Theo giờ ({{ $durationValue }} giờ)
+                        @else
+                        Theo ngày ({{ $durationValue }} đêm)
+                        @endif
+                    </p>
+                </td>
+
+                <!-- Cột phải: khách hàng -->
+                <td class="info-right">
+                    <p><strong>Khách hàng:</strong> {{ $customerName }}</p>
+                    <p><strong>Email:</strong> {{ $customerEmail }}</p>
+                    <p><strong>SĐT:</strong> {{ $customerPhone }}</p>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <table>
@@ -288,7 +313,9 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
                 <td class="label">Tiện nghi</td>
                 <td>
                     {{ $a['amenity_name'] ?? '' }}
-                    <span class="muted">(@if(!empty($a['room_number'])) phòng {{ $a['room_number'] }} @endif)</span>
+                    <span class="muted">
+                        (@if(!empty($a['room_number'])) phòng {{ $a['room_number'] }} @endif)
+                    </span>
                 </td>
                 <td>{{ (int)($a['quantity'] ?? 0) }}</td>
                 <td>{{ vnd($a['price'] ?? 0) }}</td>
@@ -312,7 +339,7 @@ $customerPhone = $invoice->booking->customer->phone ?? '---';
                 <td>-{{ vnd($depositSaved) }}</td>
             </tr>
 
-            {{-- TỔNG CỘNG (ưu tiên số đã chốt trong hóa đơn) --}}
+            {{-- TỔNG CỘNG --}}
             <tr class="total-row">
                 <td class="label">TỔNG CỘNG</td>
                 <td colspan="3"></td>
