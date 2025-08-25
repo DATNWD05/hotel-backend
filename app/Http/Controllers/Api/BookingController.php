@@ -741,24 +741,12 @@ class BookingController extends Controller
         }
 
         $now = now();
-
-        // === Kiểm tra chỉ cho check-in đúng ngày ===
         $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
+
+        // Chỉ cho check-in đúng ngày nhận phòng
         if ($now->toDateString() !== $checkInDate) {
             return response()->json([
-                'error' => 'Chỉ được check-in trong ngày ' . $checkInDate
-            ], 400);
-        }
-
-        // === Kiểm tra giới hạn giờ check-in ===
-        $startTime = $booking->start_time instanceof Carbon
-            ? $booking->start_time
-            : Carbon::parse($booking->start_time);
-
-        $allowedLateCheckIn = $startTime->copy()->addHours(2);
-        if ($now->greaterThan($allowedLateCheckIn)) {
-            return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in (đến muộn quá quy định).'
+                'error' => "Chỉ được check-in trong ngày $checkInDate."
             ], 400);
         }
 
@@ -798,6 +786,7 @@ class BookingController extends Controller
             ], 500);
         }
     }
+
 
     public function checkOut(Booking $booking)
     {
