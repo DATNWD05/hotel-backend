@@ -6,6 +6,7 @@ use App\Models\Room;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use Carbon\Carbon;
 
 class StatisticsController extends Controller
 {
@@ -30,94 +31,166 @@ class StatisticsController extends Controller
     // 1. Tổng doanh thu toàn hệ thống
     public function totalRevenue(Request $request)
     {
-        $query = DB::table('bookings')->where('status', 'Checked-out');
-        $query = $this->applyDateFilter($query, $request);
-        $total = $query->sum('total_amount');
+        // Doanh thu từ các booking đã checkout
+        $checked = DB::table('bookings')->where('status', 'Checked-out');
+        $checked = $this->applyDateFilter($checked, $request, 'bookings.check_out_date');
+        $revChecked = (float) $checked->sum('total_amount');
 
-        return response()->json(['mess' => 'Tổng doanh thu toàn hệ thống', 'data' => $total]);
+        // Cọc bị phạt từ các booking hủy (Canceled có cọc)
+        $forfeit = DB::table('bookings')
+            ->where('status', 'Canceled')
+            ->where('deposit_amount', '>', 0);
+        $forfeit = $this->applyDateFilter($forfeit, $request, 'bookings.created_at');
+        $revForfeit = (float) $forfeit->sum('deposit_amount');
+
+        return response()->json([
+            'mess' => 'Tổng doanh thu toàn hệ thống (bao gồm cọc phạt)',
+            'data' => $revChecked + $revForfeit,
+            'breakdown' => [
+                'checked_out' => $revChecked,
+                'canceled_deposit' => $revForfeit,
+            ],
+        ]);
     }
 
     // 2. Doanh thu theo ngày
     public function revenueByDay(Request $request)
     {
-        $query = DB::table('bookings')
+        // 1) Doanh thu theo ngày checkout
+        $q1 = DB::table('bookings')
             ->where('status', 'Checked-out')
-            ->select(DB::raw('DATE(bookings.check_out_date) as date'), DB::raw('SUM(bookings.total_amount) as total'))
-            ->groupBy(DB::raw('DATE(bookings.check_out_date)'))
-            ->orderBy('date', 'DESC');
+            ->selectRaw("DATE(bookings.check_out_date) as date, SUM(bookings.total_amount) as total")
+            ->groupBy(DB::raw('DATE(bookings.check_out_date)'));
+        $q1 = $this->applyDateFilter($q1, $request, 'bookings.check_out_date');
 
-        $query = $this->applyDateFilter($query, $request, 'bookings.check_out_date');
+        // 2) Cọc phạt theo ngày created_at
+        $q2 = DB::table('bookings')
+            ->where('status', 'Canceled')
+            ->where('deposit_amount', '>', 0)
+            ->selectRaw("DATE(bookings.created_at) as date, SUM(bookings.deposit_amount) as total")
+            ->groupBy(DB::raw('DATE(bookings.created_at)'));
+        $q2 = $this->applyDateFilter($q2, $request, 'bookings.created_at');
 
-        $revenue = $query->get();
+        // UNION + cộng lại theo ngày
+        $union = $q1->unionAll($q2);
+        $rows = DB::table(DB::raw("({$union->toSql()}) as t"))
+            ->mergeBindings($union)
+            ->selectRaw('t.date, SUM(t.total) as total')
+            ->groupBy('t.date')
+            ->orderBy('t.date', 'DESC')
+            ->get();
 
         return response()->json([
-            'mess' => 'Lấy doanh thu theo ngày thành công',
-            'data' => $revenue
+            'mess' => 'Lấy doanh thu theo ngày (cộng cọc phạt) thành công',
+            'data' => $rows,
         ]);
     }
 
     // 3. Tổng chi phí từng booking
     public function totalPerBooking(Request $request)
     {
-        $query = DB::table('bookings')
+        // Booking hoàn tất
+        $q1 = DB::table('bookings')
             ->where('status', 'Checked-out')
-            ->select(
-                'bookings.id as booking_id',
-                DB::raw('IFNULL(bookings.total_amount, 0) as total_amount'),
-                'bookings.check_in_date',
-                'bookings.check_out_date'
-            )
-            ->orderBy('bookings.check_out_date', 'desc');
+            ->selectRaw("
+            bookings.id as booking_id,
+            COALESCE(bookings.total_amount,0) as total_amount,
+            bookings.check_in_date,
+            bookings.check_out_date,
+            DATE(bookings.check_out_date) as date_key,
+            'Checked-out' as status
+        ");
+        $q1 = $this->applyDateFilter($q1, $request, 'bookings.check_out_date');
 
-        $query = $this->applyDateFilter($query, $request, 'bookings.check_out_date');
+        // Booking hủy: total_amount = deposit_amount, date_key = created_at
+        $q2 = DB::table('bookings')
+            ->where('status', 'Canceled')
+            ->where('deposit_amount', '>', 0)
+            ->selectRaw("
+            bookings.id as booking_id,
+            COALESCE(bookings.deposit_amount,0) as total_amount,
+            bookings.check_in_date,
+            bookings.check_out_date,
+            DATE(bookings.created_at) as date_key,
+            'Canceled' as status
+        ");
+        $q2 = $this->applyDateFilter($q2, $request, 'bookings.created_at');
 
-        $data = $query->get();
+        $union = $q1->unionAll($q2);
+        $data = DB::table(DB::raw("({$union->toSql()}) as t"))
+            ->mergeBindings($union)
+            ->orderBy('t.date_key', 'desc')
+            ->get();
 
         return response()->json([
-            'mess' => 'Lấy tổng chi phí từng booking thành công',
+            'mess' => 'Lấy tổng chi phí từng booking (kể cả cọc phạt) thành công',
             'data' => $data
         ]);
     }
+
 
     // 4. Doanh thu theo khách hàng
     public function revenueByCustomer(Request $request)
     {
-        $limit = $request->input('limit', 5);
+        $limit = (int) $request->input('limit', 5);
 
-        $query = DB::table('bookings')
+        // Hoàn tất
+        $q1 = DB::table('bookings')
             ->join('customers', 'bookings.customer_id', '=', 'customers.id')
             ->where('bookings.status', 'Checked-out')
-            ->select(
-                'customers.name',
-                DB::raw('SUM(COALESCE(bookings.total_amount, 0)) as total_spent')
-            )
-            ->groupBy('customers.id', 'customers.name')
-            ->orderByDesc('total_spent');
+            ->selectRaw("customers.id as cid, customers.name, SUM(COALESCE(bookings.total_amount,0)) as amt")
+            ->groupBy('customers.id', 'customers.name');
+        $q1 = $this->applyDateFilter($q1, $request, 'bookings.check_out_date');
 
-        $query = $this->applyDateFilter($query, $request, 'bookings.check_out_date');
+        // Cọc phạt của hủy
+        $q2 = DB::table('bookings')
+            ->join('customers', 'bookings.customer_id', '=', 'customers.id')
+            ->where('bookings.status', 'Canceled')
+            ->where('bookings.deposit_amount', '>', 0)
+            ->selectRaw("customers.id as cid, customers.name, SUM(COALESCE(bookings.deposit_amount,0)) as amt")
+            ->groupBy('customers.id', 'customers.name');
+        $q2 = $this->applyDateFilter($q2, $request, 'bookings.created_at');
 
-        $data = $query->limit($limit)->get();
+        $union = $q1->unionAll($q2);
+        $rows = DB::table(DB::raw("({$union->toSql()}) as u"))
+            ->mergeBindings($union)
+            ->selectRaw('u.cid, u.name, SUM(u.amt) as total_spent')
+            ->groupBy('u.cid', 'u.name')
+            ->orderByDesc('total_spent')
+            ->limit($limit)
+            ->get();
 
         return response()->json([
-            'mess' => 'Lấy doanh thu theo khách hàng thành công',
-            'data' => $data
+            'mess' => 'Lấy doanh thu theo khách hàng (kể cả cọc phạt) thành công',
+            'data' => $rows
         ]);
     }
 
-    // 5. Doanh thu theo phòng
+    // 5. Doanh thu theo phòng (room-only: rate × nights (+ tiện nghi phòng nếu có))
     public function revenueByRoom(Request $request)
     {
+        // Subquery cộng tiện nghi theo phòng (nếu bạn muốn gộp vào doanh thu phòng)
+        $amenitiesSub = DB::table('booking_room_amenities')
+            ->select('booking_id', 'room_id', DB::raw('SUM(price * quantity) as amenities_total'))
+            ->groupBy('booking_id', 'room_id');
+
         $query = DB::table('booking_room')
             ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
             ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
-            ->join(DB::raw('(SELECT booking_id, COUNT(*) as room_count FROM booking_room GROUP BY booking_id) as br_count'), function ($join) {
-                $join->on('booking_room.booking_id', '=', 'br_count.booking_id');
+            ->leftJoinSub($amenitiesSub, 'bra', function ($join) {
+                $join->on('bra.booking_id', '=', 'booking_room.booking_id')
+                    ->on('bra.room_id', '=', 'booking_room.room_id');
             })
             ->where('bookings.status', 'Checked-out')
-            ->select(
-                'rooms.room_number',
-                DB::raw('SUM(COALESCE(bookings.total_amount, 0) / br_count.room_count) as total_revenue')
-            )
+            ->where('bookings.is_hourly', 0)
+            ->selectRaw("
+            rooms.room_number,
+            SUM(
+              COALESCE(booking_room.rate,0) *
+              GREATEST(1, DATEDIFF(DATE(bookings.check_out_date), DATE(bookings.check_in_date)))
+              + COALESCE(bra.amenities_total, 0)
+            ) as total_revenue
+        ")
             ->groupBy('rooms.id', 'rooms.room_number')
             ->orderByDesc('total_revenue');
 
@@ -126,12 +199,12 @@ class StatisticsController extends Controller
         $data = $query->limit(5)->get();
 
         return response()->json([
-            'mess' => 'Lấy doanh thu theo phòng thành công',
+            'mess' => 'Lấy doanh thu theo phòng (room revenue)',
             'data' => $data
         ]);
     }
 
-    // 6. Doanh thu theo loại phòng
+    // 6. Doanh thu theo loại phòng (rate × số đêm; loại booking theo giờ)
     public function revenueByRoomType(Request $request)
     {
         $query = DB::table('booking_room')
@@ -139,21 +212,22 @@ class StatisticsController extends Controller
             ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
             ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
             ->where('bookings.status', 'Checked-out')
-            ->select(
-                'room_types.name as room_type',
-                DB::raw('SUM(COALESCE(booking_room.rate, 0)) as total_revenue')
-            )
+            ->where('bookings.is_hourly', 0)
+            ->selectRaw("
+            room_types.name as room_type,
+            SUM(
+              COALESCE(booking_room.rate, 0) *
+              GREATEST(1, DATEDIFF(DATE(bookings.check_out_date), DATE(bookings.check_in_date)))
+            ) as total_revenue
+        ")
             ->groupBy('room_types.id', 'room_types.name')
             ->orderByDesc('total_revenue');
 
-        // Lọc theo ngày trả phòng
         $query = $this->applyDateFilter($query, $request, 'bookings.check_out_date');
-
-        $data = $query->get();
 
         return response()->json([
             'message' => 'Doanh thu theo loại phòng',
-            'data' => $data
+            'data' => $query->get()
         ]);
     }
 
@@ -265,38 +339,85 @@ class StatisticsController extends Controller
         ]);
     }
 
-    // 12. Trung bình thời gian lưu trú
+    // 12a. Trung bình thời gian lưu trú - ĐẶT THEO NGÀY (is_hourly=0)
     public function averageStayDuration(Request $request)
     {
-        $query = DB::table('bookings')
+        $q = DB::table('bookings')
             ->where('status', 'Checked-out')
+            ->where('is_hourly', 0)
             ->whereNotNull('check_in_date')
             ->whereNotNull('check_out_date')
-            ->whereRaw('DATEDIFF(check_out_date, check_in_date) >= 0');
+            // nights = số đêm; đảm bảo không âm
+            ->whereRaw('DATEDIFF(DATE(check_out_date), DATE(check_in_date)) >= 0');
 
-        $query = $this->applyDateFilter($query, $request, 'check_out_date');
+        // lọc theo ngày trả phòng (date)
+        $q = $this->applyDateFilter($q, $request, 'bookings.check_out_date');
 
-        $average = $query->select(DB::raw('AVG(DATEDIFF(check_out_date, check_in_date)) as avg_days'))->first();
+        $row = $q->selectRaw("
+        AVG(DATEDIFF(DATE(check_out_date), DATE(check_in_date)))  AS avg_nights,
+        AVG(GREATEST(1, DATEDIFF(DATE(check_out_date), DATE(check_in_date)))) AS avg_billable_nights,
+        SUM(DATEDIFF(DATE(check_out_date), DATE(check_in_date)))  AS total_nights,
+        COUNT(*)                                                  AS count_bookings
+    ")->first();
 
         return response()->json([
-            'mess' => 'Tính trung bình thời gian lưu trú thành công',
+            'mess' => 'Trung bình thời gian lưu trú - đặt theo ngày',
             'from_date' => $request->input('from_date'),
-            'to_date' => $request->input('to_date'),
-            'average_stay_days' => round($average->avg_days ?? 0, 2)
+            'to_date'   => $request->input('to_date'),
+            // trung bình đúng nghĩa số đêm (có thể =0 nếu nhận/trả cùng ngày)
+            'avg_nights'          => round((float)($row->avg_nights ?? 0), 2),
+            // trung bình “tính tiền tối thiểu 1 đêm”
+            'average_stay_days' => round((float)($row->avg_billable_nights ?? 0), 2),
+            'total_nights'        => (int)($row->total_nights ?? 0),
+            'count_bookings'      => (int)($row->count_bookings ?? 0),
         ]);
     }
 
-    // 13. Tỷ lệ huỷ phòng
+    // 12b. Trung bình thời gian lưu trú - ĐẶT THEO GIỜ (is_hourly=1)
+    public function averageStayHourly(Request $request)
+    {
+        $q = DB::table('bookings')
+            ->where('status', 'Checked-out')
+            ->where('is_hourly', 1)
+            ->whereNotNull('check_in_at')
+            ->whereNotNull('check_out_at')
+            // đảm bảo không âm
+            ->whereRaw('TIMESTAMPDIFF(SECOND, check_in_at, check_out_at) >= 0');
+
+        // lọc theo thời điểm trả phòng (datetime)
+        $q = $this->applyDateFilter($q, $request, 'bookings.check_out_at');
+
+        // dùng phút để chính xác hơn, rồi đổi ra giờ
+        $row = $q->selectRaw("
+        AVG(TIMESTAMPDIFF(MINUTE, check_in_at, check_out_at)) / 60 AS avg_hours,
+        SUM(TIMESTAMPDIFF(MINUTE, check_in_at, check_out_at)) / 60 AS total_hours,
+        COUNT(*)                                                    AS count_bookings
+    ")->first();
+
+        return response()->json([
+            'mess' => 'Trung bình thời gian lưu trú - đặt theo giờ',
+            'from_date' => $request->input('from_date'),
+            'to_date'   => $request->input('to_date'),
+            'avg_hours'       => round((float)($row->avg_hours ?? 0), 2),
+            'total_hours'     => round((float)($row->total_hours ?? 0), 2),
+            'count_bookings'  => (int)($row->count_bookings ?? 0),
+        ]);
+    }
+
+    // 13. Tỷ lệ huỷ phòng (lọc theo created_at để đúng ngữ nghĩa)
     public function cancellationRate(Request $request)
     {
+        // Tổng các đơn trong kỳ (theo thiết kế cũ: chỉ tính 3 trạng thái này)
         $queryTotal = DB::table('bookings')
             ->whereIn('status', ['Checked-in', 'Checked-out', 'Canceled']);
 
+        // Các đơn bị huỷ
         $queryCancel = DB::table('bookings')
             ->whereRaw('LOWER(status) = ?', ['canceled']);
 
-        $queryTotal = $this->applyDateFilter($queryTotal, $request);
-        $queryCancel = $this->applyDateFilter($queryCancel, $request);
+        // Lọc theo ngày tạo đơn (không dùng check_out_date)
+        $queryTotal  = $this->applyDateFilter($queryTotal,  $request, 'bookings.created_at');
+        $queryCancel = $this->applyDateFilter($queryCancel, $request, 'bookings.created_at');
 
         $total = $queryTotal->count();
         $cancelled = $queryCancel->count();
@@ -311,102 +432,156 @@ class StatisticsController extends Controller
         ]);
     }
 
-    // 14. Bảng doanh thu chi tiết theo booking
+    // 14. Bảng doanh thu
     public function revenueTable(Request $request)
     {
-        $perPage = $request->input('per_page', 10);
-        $page = $request->input('page', 1);
+        $perPage = (int) $request->input('per_page', 10);
+        $page    = (int) $request->input('page', 1);
 
-        $query = DB::table('bookings')
-            ->join('customers', 'bookings.customer_id', '=', 'customers.id')
-            ->join('booking_room', 'bookings.id', '=', 'booking_room.booking_id')
+        // Gộp danh sách phòng & loại phòng theo từng booking để tránh lặp dòng
+        $roomsAgg = DB::table('booking_room')
             ->join('rooms', 'booking_room.room_id', '=', 'rooms.id')
             ->join('room_types', 'rooms.room_type_id', '=', 'room_types.id')
-            ->whereIn('bookings.status', ['Checked-in', 'Checked-out', 'Pending', 'Canceled'])
+            ->select(
+                'booking_room.booking_id',
+                DB::raw("GROUP_CONCAT(DISTINCT rooms.room_number ORDER BY rooms.room_number SEPARATOR ', ') AS room_numbers"),
+                DB::raw("GROUP_CONCAT(DISTINCT room_types.name ORDER BY room_types.name SEPARATOR ', ') AS room_types")
+            )
+            ->groupBy('booking_room.booking_id');
+
+        // Điều kiện trạng thái:
+        // - Lấy Checked-in / Checked-out / Pending
+        // - Lấy Canceled CHỈ KHI có deposit_amount > 0
+        $statusFilter = function ($q) {
+            $q->whereIn('bookings.status', ['Checked-in', 'Checked-out', 'Pending'])
+                ->orWhere(function ($q2) {
+                    $q2->where('bookings.status', 'Canceled')
+                        ->where('bookings.deposit_amount', '>', 0);
+                });
+        };
+
+        // BẢNG: 1 dòng / booking
+        $query = DB::table('bookings')
+            ->join('customers', 'bookings.customer_id', '=', 'customers.id')
+            ->leftJoinSub($roomsAgg, 'ra', function ($join) {
+                $join->on('ra.booking_id', '=', 'bookings.id');
+            })
+            ->where($statusFilter)
             ->select(
                 'bookings.id as booking_code',
                 'customers.name as customer_name',
-                'room_types.name as room_type',
-                'rooms.room_number',
+                DB::raw('COALESCE(ra.room_types, "") as room_type'),
+                DB::raw('COALESCE(ra.room_numbers, "") as room_number'),
                 'bookings.check_in_date',
                 'bookings.check_out_date',
                 'bookings.total_amount',
                 'bookings.deposit_amount',
-                DB::raw('(bookings.total_amount - bookings.deposit_amount) as remaining_amount'),
+                // Canceled thì còn lại = 0, các trạng thái khác = total - deposit
+                DB::raw("CASE WHEN bookings.status = 'Canceled' THEN 0
+                          ELSE (bookings.total_amount - bookings.deposit_amount) END as remaining_amount"),
                 'bookings.status'
             )
             ->orderBy('bookings.created_at', 'desc');
 
+        // Lọc ngày: giữ theo created_at để cả đơn hủy (không có check_out_date) vẫn lọc được
         $query = $this->applyDateFilter($query, $request, 'bookings.created_at');
+
         $paginated = $query->paginate($perPage, ['*'], 'page', $page);
 
-        $summary = DB::table('bookings')
-            ->whereIn('status', ['Checked-in', 'Checked-out', 'Pending']);
-        $summary = $this->applyDateFilter($summary, $request, 'bookings.created_at');
+        // SUMMARY: dùng cùng điều kiện trạng thái + cùng cột ngày
+        $base = DB::table('bookings')->where($statusFilter);
+        $base = $this->applyDateFilter($base, $request, 'bookings.created_at');
 
-        $summaryData = $summary->selectRaw('
-        SUM(total_amount) as total_amount,
-        SUM(deposit_amount) as deposit_amount,
-        SUM(total_amount - deposit_amount) as remaining_amount
-    ')->first();
+        // Nhóm "không hủy"
+        $normal = (clone $base)
+            ->whereIn('status', ['Checked-in', 'Checked-out', 'Pending'])
+            ->selectRaw('
+            SUM(total_amount) as tot,
+            SUM(deposit_amount) as dep,
+            SUM(total_amount - deposit_amount) as rem
+        ')
+            ->first();
+
+        // Nhóm "Canceled có cọc" (cọc bị phạt tính như doanh thu)
+        $forfeit = (clone $base)
+            ->where('status', 'Canceled')
+            ->where('deposit_amount', '>', 0)
+            ->selectRaw('SUM(deposit_amount) as forfeited_dep')
+            ->first();
+
+        $totNormal   = (float) ($normal->tot ?? 0);
+        $depNormal   = (float) ($normal->dep ?? 0);
+        $remNormal   = (float) ($normal->rem ?? 0);
+        $depForfeit  = (float) ($forfeit->forfeited_dep ?? 0);
+
+        // Quy tắc tổng kết:
+        // - Tổng doanh thu = doanh thu booking thường + cọc bị phạt của đơn hủy
+        // - Đặt cọc = tổng cọc của tất cả booking (kể cả hủy)
+        // - Còn lại = chỉ tính với booking thường (đơn hủy = 0)
+        $summaryTotal     = $totNormal + $depForfeit;
+        $summaryDeposit   = $depNormal + $depForfeit;
+        $summaryRemaining = $remNormal; // canceled = 0
 
         return response()->json([
-            'message' => 'Dữ liệu bảng doanh thu',
+            'message' => 'Dữ liệu bảng doanh thu (kể cả Canceled có cọc)',
             'data' => $paginated->items(),
             'pagination' => [
                 'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
-                'per_page' => $paginated->perPage(),
-                'total' => $paginated->total()
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total()
             ],
             'summary' => [
-                'total_amount' => ($summaryData->total_amount ?? 0),
-                'deposit_amount' => ($summaryData->deposit_amount ?? 0),
-                'remaining_amount' => ($summaryData->remaining_amount ?? 0)
+                'total_amount'    => $summaryTotal,
+                'deposit_amount'  => $summaryDeposit,
+                'remaining_amount' => $summaryRemaining
             ]
         ]);
     }
 
-    // 15. Bảng dịch vụ đã sử dụng
+    // 15. Bảng dịch vụ đã sử dụng (group theo service_id; đếm tổng nhóm không tải toàn bộ)
     public function bookingServiceTable(Request $request)
     {
-        $perPage = $request->input('per_page', 10);
-        $page = $request->input('page', 1);
+        $perPage = (int) $request->input('per_page', 10);
+        $page    = (int) $request->input('page', 1);
 
-        // Main query (tổng hợp các dịch vụ giống nhau)
-        $query = DB::table('booking_service')
+        // Base + filter ngày theo created_at của booking_service
+        $base = DB::table('booking_service')
             ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
             ->join('services', 'booking_service.service_id', '=', 'services.id')
             ->join('service_categories', 'services.category_id', '=', 'service_categories.id')
-            ->leftJoin('employees', 'bookings.created_by', '=', 'employees.id')
-            ->where('bookings.status', 'Checked-out')
-            ->select(
-                'services.name as service_name',
-                'service_categories.name as category_name',
-                DB::raw('SUM(booking_service.quantity) as total_quantity'),
-                DB::raw('SUM(booking_service.quantity * services.price) as total')
-            )
-            ->groupBy('services.name', 'service_categories.name', 'services.price')
-            ->orderByDesc('total');
-
-        // Lọc theo ngày nếu có
-        $query = $this->applyDateFilter($query, $request, 'booking_service.created_at');
-
-        // Tổng số bản ghi sau khi nhóm
-        $total = $query->get()->count(); // Đếm số lượng nhóm thay vì count trực tiếp
-
-        // Phân trang
-        $data = $query->forPage($page, $perPage)->get();
-
-        // Tổng tiền cho booking đã Check-out
-        $summary = DB::table('booking_service')
-            ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
-            ->join('services', 'booking_service.service_id', '=', 'services.id')
             ->where('bookings.status', 'Checked-out');
 
-        $summary = $this->applyDateFilter($summary, $request, 'booking_service.created_at');
+        $base = $this->applyDateFilter($base, $request, 'booking_service.created_at');
 
-        $summaryData = $summary->select(DB::raw('SUM(booking_service.quantity * services.price) as total_amount'))->first();
+        // Query đã GROUP (ổn định theo service_id)
+        $grouped = (clone $base)
+            ->selectRaw("
+            booking_service.service_id,
+            services.name as service_name,
+            service_categories.name as category_name,
+            services.price as price_snapshot,
+            SUM(booking_service.quantity) as total_quantity,
+            SUM(booking_service.quantity * COALESCE(services.price,0)) as total
+        ")
+            ->groupBy('booking_service.service_id', 'services.name', 'service_categories.name', 'services.price')
+            ->orderByDesc('total');
+
+        // Tổng số nhóm (không load toàn bộ)
+        $total = DB::table(DB::raw("({$grouped->toSql()}) as t"))
+            ->mergeBindings($grouped)
+            ->count();
+
+        // Phân trang
+        $data = DB::table(DB::raw("({$grouped->toSql()}) as t"))
+            ->mergeBindings($grouped)
+            ->forPage($page, $perPage)
+            ->get();
+
+        // Tổng tiền dịch vụ (theo schema hiện tại vẫn phải nhân với services.price)
+        $summary = (clone $base)
+            ->selectRaw('SUM(booking_service.quantity * COALESCE(services.price,0)) as total_amount')
+            ->value('total_amount');
 
         return response()->json([
             'message' => 'Dữ liệu bảng dịch vụ',
@@ -414,11 +589,11 @@ class StatisticsController extends Controller
             'pagination' => [
                 'current_page' => $page,
                 'per_page' => $perPage,
-                'total' => $total,
-                'last_page' => ceil($total / $perPage),
+                'total' => (int) $total,
+                'last_page' => (int) ceil($total / $perPage),
             ],
             'summary' => [
-                'total_amount' => ($summaryData->total_amount ?? 0),
+                'total_amount' => (float) ($summary ?? 0),
             ]
         ]);
     }
@@ -436,6 +611,7 @@ class StatisticsController extends Controller
             'total_service_revenue' => $this->totalServiceRevenue($request)->getData(),
             'occupancy_rate' => $this->occupancyRate($request)->getData(),
             'average_stay_duration' => $this->averageStayDuration($request)->getData(),
+            'average_stay_hourly'  => $this->averageStayHourly($request)->getData(),
             'cancellation_rate' => $this->cancellationRate($request)->getData(),
             'top_customers' => $this->topFrequentCustomers($request)->getData(),
             'bookings_by_month' => $this->bookingsByMonth($request)->getData(),
