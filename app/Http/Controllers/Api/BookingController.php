@@ -754,7 +754,6 @@ class BookingController extends Controller
         try {
             $booking->status = 'Checked-in';
             $booking->check_in_at = $now;
-            $booking->check_in_by = Auth::id();
             $booking->save();
 
             $booking->loadMissing('rooms');
@@ -763,7 +762,7 @@ class BookingController extends Controller
                 if (!in_array($room->status, ['available', 'booked'])) {
                     throw new \Exception("Phòng {$room->room_number} không khả dụng để check-in.");
                 }
-                $room->update(['status' => 'occupied']);
+                $room->update(['status' => 'booked']);
             }
 
             DB::commit();
