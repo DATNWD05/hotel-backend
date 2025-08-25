@@ -375,7 +375,7 @@ class VNPayController extends Controller
     public function payDepositOnline(Request $request)
     {
         $bookingId = $request->input('booking_id');
-        $booking = Booking::find($bookingId);
+        $booking   = Booking::find($bookingId);
 
         if (!$booking) {
             return response()->json(['error' => 'Không tìm thấy booking'], 404);
@@ -388,56 +388,46 @@ class VNPayController extends Controller
         $vnp_TmnCode    = config('vnpay.tmn_code');
         $vnp_HashSecret = config('vnpay.hash_secret');
         $vnp_Url        = config('vnpay.url');
-        $vnp_ReturnUrl  = config('vnpay.return_url');
+        $vnp_ReturnUrl  = route('vnpay.deposit.return'); // ✅ dùng route riêng cho deposit
 
-        $depositAmount = $booking->deposit_amount;
-        $orderId = 'BOOKING-DEPOSIT-' . $bookingId . '-' . time();
+        $depositAmount = (int) $booking->deposit_amount;
+        $orderId       = 'BOOKING-DEPOSIT-' . $bookingId . '-' . time();
 
         $data = [
             'vnp_Version'    => '2.1.0',
             'vnp_Command'    => 'pay',
             'vnp_TmnCode'    => $vnp_TmnCode,
-            'vnp_Amount'     => $depositAmount * 100, // nhân 100
+            'vnp_Amount'     => $depositAmount * 100, // VNPay yêu cầu nhân 100
             'vnp_CurrCode'   => 'VND',
             'vnp_TxnRef'     => $orderId,
             'vnp_OrderInfo'  => 'Thanh toán đặt cọc cho booking #' . $bookingId,
-            'vnp_OrderType'  => 'other',
+            'vnp_OrderType'  => 'billpayment',
             'vnp_Locale'     => 'vn',
             'vnp_ReturnUrl'  => $vnp_ReturnUrl,
             'vnp_IpAddr'     => $request->ip(),
             'vnp_CreateDate' => now()->format('YmdHis'),
         ];
 
-        // Bắt buộc sắp xếp theo thứ tự tăng dần key trước khi tạo hash
         ksort($data);
-        $hashData = '';
+
+        // Build hashData chuẩn
+        $hashDataArr = [];
         foreach ($data as $key => $value) {
-            $hashData .= urlencode($key) . '=' . urlencode($value) . '&';
+            $hashDataArr[] = urlencode($key) . '=' . urlencode($value);
         }
-        $hashData = rtrim($hashData, '&');
+        $hashData   = implode('&', $hashDataArr);
         $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
         $data['vnp_SecureHash'] = $secureHash;
 
         $paymentUrl = $vnp_Url . '?' . http_build_query($data);
 
-
-        // Trả về JSON cho frontend gọi hoặc redirect nếu là từ trình duyệt
-        if ($request->expectsJson()) {
-            return response()->json([
-                'payment_url'    => $paymentUrl,
-                'order_id'       => $orderId,
-                'deposit_amount' => $depositAmount,
-            ]);
-        } else {
-            return redirect()->away($paymentUrl);
-        }
+        return redirect()->away($paymentUrl);
     }
-
 
 
     public function handleDepositReturn(Request $request)
     {
-        $vnp_HashSecret = Config::get('vnpay.hash_secret');
+        $vnp_HashSecret = config('vnpay.hash_secret');
         $inputData = $request->all();
         $vnp_SecureHash = $inputData['vnp_SecureHash'] ?? null;
 
@@ -445,7 +435,6 @@ class VNPayController extends Controller
             return response()->json(['success' => false, 'message' => 'Thiếu mã bảo mật'], 400);
         }
 
-        // Lấy các vnp_ tham số để xác minh chữ ký
         $vnpData = [];
         foreach ($inputData as $key => $value) {
             if (str_starts_with($key, 'vnp_') && $key !== 'vnp_SecureHash') {
@@ -453,24 +442,25 @@ class VNPayController extends Controller
             }
         }
 
+        // ✅ Build hashData đúng chuẩn
         ksort($vnpData);
-        $hashData = '';
+        $hashDataArr = [];
         foreach ($vnpData as $key => $value) {
-            $hashData .= urlencode($key) . '=' . urlencode($value) . '&';
+            $hashDataArr[] = urlencode($key) . '=' . urlencode($value);
         }
-        $hashData = rtrim($hashData, '&');
-
+        $hashData = implode('&', $hashDataArr);
         $secureHash = hash_hmac('sha512', $hashData, $vnp_HashSecret);
+
         if ($secureHash !== $vnp_SecureHash) {
             return response()->json(['success' => false, 'message' => 'Sai mã bảo mật'], 400);
         }
 
-        if ($inputData['vnp_ResponseCode'] !== '00') {
+        if (($inputData['vnp_ResponseCode'] ?? null) !== '00') {
             return response()->json(['success' => false, 'message' => 'Thanh toán thất bại'], 400);
         }
 
-        // Trích booking_id từ TxnRef
-        if (!preg_match('/BOOKING-DEPOSIT-(\d+)-/', $inputData['vnp_TxnRef'], $matches)) {
+        // ✅ Lấy booking_id từ TxnRef
+        if (!preg_match('/BOOKING-DEPOSIT-(\d+)-/', $inputData['vnp_TxnRef'] ?? '', $matches)) {
             return response()->json(['error' => 'Mã giao dịch không hợp lệ'], 400);
         }
 
@@ -480,18 +470,17 @@ class VNPayController extends Controller
             return response()->json(['error' => 'Không tìm thấy booking'], 404);
         }
 
-        // Đã thanh toán rồi thì không xử lý lại
         if ($booking->is_deposit_paid) {
             return response()->json(['message' => 'Đặt cọc đã được thanh toán trước đó'], 422);
         }
 
-        $depositAmount = $inputData['vnp_Amount'] / 100;
+        $depositAmount = (int) ($inputData['vnp_Amount'] / 100);
 
         DB::beginTransaction();
         try {
-            // Ghi log thanh toán (KHÔNG có invoice_id)
             Payment::create([
-                'invoice_id'       => null, // vì chưa có hóa đơn
+                'invoice_id'       => null,
+                'booking_id'       => $booking->id, // ✅ thêm booking_id
                 'amount'           => $depositAmount,
                 'method'           => 'vnpay',
                 'transaction_code' => $inputData['vnp_TransactionNo'] ?? null,
@@ -499,11 +488,9 @@ class VNPayController extends Controller
                 'status'           => 'success',
             ]);
 
-            // Cập nhật đơn đặt phòng
             $booking->update([
-                'deposit_amount'   => $depositAmount,
-                'is_deposit_paid'  => true,
-                'status'           => 'Confirmed',
+                'is_deposit_paid' => true,
+                'status'          => 'Confirmed',
             ]);
 
             DB::commit();
