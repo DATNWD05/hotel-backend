@@ -20,50 +20,50 @@ class CustomerController extends Controller
     }
     public function index()
     {
-        $data = Customer::paginate(10);
+        $data = Customer::orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'status' => 'success',
-            'data'   => $data->items(),
-            'meta'   => [
-                'current_page' => $data->currentPage(),
-                'last_page'    => $data->lastPage(),
-                'per_page'     => $data->perPage(),
-                'total'        => $data->total(),
-            ],
+            'data'   => $data,
+            // 'meta'   => [
+            //     'current_page' => $data->currentPage(),
+            //     'last_page'    => $data->lastPage(),
+            //     'per_page'     => $data->perPage(),
+            //     'total'        => $data->total(),
+            // ],
         ]);
     }
 
     public function show(Customer $customer)
     {
-        $customer->load([
-            'bookings.rooms.roomType.amenities',
-            'bookings.services'
-        ]);
+            $customer->load([
+                'bookings.rooms.roomType.amenities',
+                'bookings.services'
+            ]);
 
-        $bookingHistory = $customer->bookings->map(function ($booking) {
-            return [
-                'booking_id' => $booking->id,
-                'check_in'   => $booking->check_in_date,
-                'check_out'  => $booking->check_out_date,
-                'rooms' => $booking->rooms->map(function ($room) {
-                    return [
-                        'room_number' => $room->room_number,
-                        'room_type'   => $room->roomType->name ?? null,
-                        'base_rate'   => $room->roomType->base_rate ?? null,
-                        'amenities'   => $room->roomType->amenities->pluck('name') ?? [],
-                    ];
-                }),
-                'services' => $booking->services->map(function ($service) {
-                    return [
-                        'name'     => $service->name,
-                        'quantity' => $service->pivot->quantity,
-                        'price'    => $service->price,
-                        'total'    => $service->price * $service->pivot->quantity,
-                    ];
-                })
-            ];
-        });
+            $bookingHistory = $customer->bookings->map(function ($booking) {
+                return [
+                    'booking_id' => $booking->id,
+                    'check_in'   => $booking->check_in_date,
+                    'check_out'  => $booking->check_out_date,
+                    'rooms' => $booking->rooms->map(function ($room) {
+                        return [
+                            'room_number' => $room->room_number,
+                            'room_type'   => $room->roomType->name ?? null,
+                            'base_rate'   => $room->roomType->base_rate ?? null,
+                            'amenities'   => $room->roomType->amenities->pluck('name') ?? [],
+                        ];
+                    }),
+                    'services' => $booking->services->map(function ($service) {
+                        return [
+                            'name'     => $service->name,
+                            'quantity' => $service->pivot->quantity,
+                            'price'    => $service->price,
+                            'total'    => $service->price * $service->pivot->quantity,
+                        ];
+                    })
+                ];
+            });
 
         $customerData = $customer->toArray();
         $customerData['booking_history'] = $bookingHistory;

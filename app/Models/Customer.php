@@ -24,6 +24,6 @@ class Customer extends Model
 
     public function bookings()
     {
-        return $this->hasMany(Booking::class);
+        return $this->hasMany(Booking::class)->orderBy('check_in_date', 'desc');
     }
 }
