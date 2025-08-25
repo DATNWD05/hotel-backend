@@ -230,15 +230,6 @@ class BookingController extends Controller
         $checkIn = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
-        if ($isHourly) {
-            if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
-                return response()->json([
-                    'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
-                ], 422);
-            }
-        }
-
-
         foreach ($validated['room_ids'] as $roomId) {
             $conflict = DB::table('booking_room')
                 ->join('bookings', 'booking_room.booking_id', '=', 'bookings.id')
