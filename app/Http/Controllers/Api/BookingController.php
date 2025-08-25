@@ -416,25 +416,9 @@ class BookingController extends Controller
 
         // Kiểm tra quy tắc đặt phòng giống store
         if ($isHourly) {
-            if ($checkIn->hour >= 20) {
-                return response()->json([
-                    'message' => 'Không thể đặt phòng theo giờ sau 20h. Vui lòng chọn đặt phòng qua đêm (theo ngày).',
-                ], 422);
-            }
-            if (!$checkIn->isSameDay($checkOut)) {
-                return response()->json([
-                    'message' => 'Đặt phòng theo giờ phải có ngày check-in và check-out trùng nhau.',
-                ], 422);
-            }
-        } else {
             if ($checkIn->copy()->startOfDay()->equalTo($checkOut->copy()->startOfDay())) {
                 return response()->json([
                     'message' => 'Với đặt phòng theo ngày, bạn phải lưu trú ít nhất 1 đêm.',
-                ], 422);
-            }
-            if (!($checkOut->hour === 12 && $checkOut->minute === 0)) {
-                return response()->json([
-                    'message' => 'Với đặt phòng qua đêm, thời gian check-out phải là 12:00 trưa hôm sau.',
                 ], 422);
             }
         }
