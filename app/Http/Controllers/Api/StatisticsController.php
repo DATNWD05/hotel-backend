@@ -39,7 +39,8 @@ class StatisticsController extends Controller
         // Cọc bị phạt từ các booking hủy (Canceled có cọc)
         $forfeit = DB::table('bookings')
             ->where('status', 'Canceled')
-            ->where('deposit_amount', '>', 0);
+            ->where('deposit_amount', '>', 0)
+            ->where('bookings.is_deposit_paid', '=', 1);
         $forfeit = $this->applyDateFilter($forfeit, $request, 'bookings.created_at');
         $revForfeit = (float) $forfeit->sum('deposit_amount');
 
@@ -67,6 +68,7 @@ class StatisticsController extends Controller
         $q2 = DB::table('bookings')
             ->where('status', 'Canceled')
             ->where('deposit_amount', '>', 0)
+            ->where('bookings.is_deposit_paid', '=', 1)
             ->selectRaw("DATE(bookings.created_at) as date, SUM(bookings.deposit_amount) as total")
             ->groupBy(DB::raw('DATE(bookings.created_at)'));
         $q2 = $this->applyDateFilter($q2, $request, 'bookings.created_at');
@@ -106,6 +108,7 @@ class StatisticsController extends Controller
         $q2 = DB::table('bookings')
             ->where('status', 'Canceled')
             ->where('deposit_amount', '>', 0)
+            ->where('bookings.is_deposit_paid', '=', 1)
             ->selectRaw("
             bookings.id as booking_id,
             COALESCE(bookings.deposit_amount,0) as total_amount,
@@ -147,6 +150,7 @@ class StatisticsController extends Controller
             ->join('customers', 'bookings.customer_id', '=', 'customers.id')
             ->where('bookings.status', 'Canceled')
             ->where('bookings.deposit_amount', '>', 0)
+            ->where('bookings.is_deposit_paid', '=', 1)
             ->selectRaw("customers.id as cid, customers.name, SUM(COALESCE(bookings.deposit_amount,0)) as amt")
             ->groupBy('customers.id', 'customers.name');
         $q2 = $this->applyDateFilter($q2, $request, 'bookings.created_at');
@@ -456,7 +460,8 @@ class StatisticsController extends Controller
             $q->whereIn('bookings.status', ['Checked-in', 'Checked-out', 'Pending'])
                 ->orWhere(function ($q2) {
                     $q2->where('bookings.status', 'Canceled')
-                        ->where('bookings.deposit_amount', '>', 0);
+                        ->where('deposit_amount', '>', 0)
+                        ->where('bookings.is_deposit_paid', '=', 1);
                 });
         };
 
@@ -506,6 +511,7 @@ class StatisticsController extends Controller
         $forfeit = (clone $base)
             ->where('status', 'Canceled')
             ->where('deposit_amount', '>', 0)
+            ->where('bookings.is_deposit_paid', '=', 1)
             ->selectRaw('SUM(deposit_amount) as forfeited_dep')
             ->first();
 
