@@ -266,7 +266,9 @@ class BookingController extends Controller
         $user = Auth::user();
         $start = Carbon::parse($validated['check_in_date']);
         $end   = Carbon::parse($validated['check_out_date']);
-        $duration = $isHourly ? max(1, ceil($start->diffInMinutes($end) / 60)) : max(1, $start->diffInDays($end));
+        $duration = $isHourly
+            ? max(1, ceil($start->diffInMinutes($end) / 60))
+            : max(1, ceil($start->diffInSeconds($end) / 86400)); // mỗi đêm tính là 86400 giây
 
         $roomTotal = 0;
         $roomsData = Room::with('roomType')->findMany($validated['room_ids'])->mapWithKeys(function ($room) use (&$roomTotal, $duration, $isHourly) {
@@ -449,8 +451,17 @@ class BookingController extends Controller
             'is_hourly'      => $isHourly,
         ]);
 
-        // Tính thời gian lưu trú
-        $duration = $isHourly ? max(1, ceil($checkIn->diffInMinutes($checkOut) / 60)) : max(1, $checkIn->diffInDays($checkOut));
+        if ($isHourly) {
+            $duration = max(1, (int) ceil($checkIn->diffInMinutes($checkOut) / 60));
+        } else {
+            // Nếu checkout cùng ngày hôm sau và <= 12h -> tính 1 đêm
+            if ($checkOut->isSameDay($checkIn->copy()->addDay()) && $checkOut->hour <= 12) {
+                $duration = 1;
+            } else {
+                // Đúng chuẩn khách sạn: số đêm = số ngày chênh lệch (bỏ qua giờ)
+                $duration = max(1, $checkIn->startOfDay()->diffInDays($checkOut->startOfDay()));
+            }
+        }
 
         // Cập nhật phòng
         $roomTotal = 0;
@@ -705,7 +716,7 @@ class BookingController extends Controller
      * API thực hiện hành động check-in
      * POST /api/check-in/{id}
      */
-    public function checkIn(Booking $booking)
+    public function checkIn(Request $request, Booking $booking)
     {
         if ($booking->status !== 'Confirmed') {
             return response()->json([
@@ -714,22 +725,26 @@ class BookingController extends Controller
         }
 
         $now = now();
-        $startTime = $booking->start_time instanceof Carbon
-            ? $booking->start_time
-            : Carbon::parse($booking->start_time);
+        $checkInDateTime = Carbon::parse($booking->check_in_date);
+        $earlyCheckIn = $request->input('early_check_in', false);
 
-        $allowedLateCheckIn = $startTime->copy()->addHours(2);
+        if ($now->lessThan($checkInDateTime)) {
+            $minutesDiff = $now->diffInMinutes($checkInDateTime);
 
-        if ($now->greaterThan($allowedLateCheckIn)) {
-            return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
-            ], 400);
+            if ($minutesDiff > 60 && !$earlyCheckIn) {
+                $diff = $now->diff($checkInDateTime);
+                $remaining = $diff->format('%d ngày %h giờ %i phút');
+                return response()->json([
+                    'error' => "Bạn chưa đến thời gian check-in. Còn $remaining nữa (" . $checkInDateTime->format('d/m/Y H:i') . ") mới đến giờ check-in.",
+                    'allow_early' => true
+                ], 400);
+            }
         }
 
         DB::beginTransaction();
         try {
             $booking->status = 'Checked-in';
-            $booking->check_in_at = now();
+            $booking->check_in_at = $now;
             $booking->save();
 
             foreach ($booking->rooms as $room) {
