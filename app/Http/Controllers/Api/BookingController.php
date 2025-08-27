@@ -91,8 +91,10 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
+        $query = Room::query()
+            // 🔹 Loại bỏ phòng đang bảo trì
+            ->where('status', '!=', 'maintenance');
 
-        $query = Room::query();
         if (!empty($validated['room_type_id'])) {
             $query->where('room_type_id', $validated['room_type_id']);
         }
@@ -712,27 +714,25 @@ class BookingController extends Controller
         }
 
         $now = now();
-        $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
+        $startTime = $booking->start_time instanceof Carbon
+            ? $booking->start_time
+            : Carbon::parse($booking->start_time);
 
-        // Chỉ cho check-in đúng ngày nhận phòng
-        if ($now->toDateString() !== $checkInDate) {
+        $allowedLateCheckIn = $startTime->copy()->addHours(2);
+
+        if ($now->greaterThan($allowedLateCheckIn)) {
             return response()->json([
-                'error' => "Chỉ được check-in trong ngày $checkInDate."
+                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
             ], 400);
         }
 
         DB::beginTransaction();
         try {
             $booking->status = 'Checked-in';
-            $booking->check_in_at = $now;
+            $booking->check_in_at = now();
             $booking->save();
 
-            $booking->loadMissing('rooms');
-
             foreach ($booking->rooms as $room) {
-                if (!in_array($room->status, ['available', 'booked'])) {
-                    throw new \Exception("Phòng {$room->room_number} không khả dụng để check-in.");
-                }
                 $room->update(['status' => 'booked']);
             }
 
@@ -756,7 +756,6 @@ class BookingController extends Controller
             ], 500);
         }
     }
-
 
     public function checkOut(Booking $booking)
     {
