@@ -60,20 +60,21 @@ class AttendanceController extends Controller
         ]);
     }
 
-    public function faceAttendance(Request $request)
+   public function faceAttendance(Request $request)
     {
         $request->validate(['image' => 'required|string']);
 
+        // Decode ảnh base64
         $base64Image = preg_replace('#^data:image/\w+;base64,#i', '', $request->input('image'));
         $base64Image = str_replace(' ', '+', $base64Image);
         Storage::put("debug_camera.jpg", base64_decode($base64Image));
 
+        // Detect khuôn mặt
         $detectResponse = Http::withoutVerifying()->asForm()->post('https://api-us.faceplusplus.com/facepp/v3/detect', [
             'api_key' => env('FACEPP_KEY'),
             'api_secret' => env('FACEPP_SECRET'),
             'image_base64' => $base64Image,
         ]);
-
         if (!$detectResponse->successful() || count($detectResponse['faces'] ?? []) === 0) {
             return response()->json([
                 'success' => false,
@@ -81,13 +82,12 @@ class AttendanceController extends Controller
             ], 400);
         }
 
+        // Tìm nhân viên trùng khuôn mặt
         $faces = EmployeeFace::with('employee')->get();
-
         foreach ($faces as $face) {
             if (!Storage::disk('public')->exists($face->image_path)) continue;
 
             $faceBase64 = base64_encode(Storage::disk('public')->get($face->image_path));
-
             $compareResponse = Http::withoutVerifying()->asForm()->post('https://api-us.faceplusplus.com/facepp/v3/compare', [
                 'api_key' => env('FACEPP_KEY'),
                 'api_secret' => env('FACEPP_SECRET'),
@@ -95,154 +95,274 @@ class AttendanceController extends Controller
                 'image_base64_2' => $base64Image,
             ]);
 
-            if ($compareResponse->successful() && ($compareResponse['confidence'] ?? 0) >= 85) {
-                $employee = $face->employee;
-                $now = now()->setTimezone('Asia/Ho_Chi_Minh');
-                $today = $now->toDateString();
+            if (!$compareResponse->successful() || ($compareResponse['confidence'] ?? 0) < 85) {
+                continue;
+            }
 
-                if ($now->lt(Carbon::today())) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Không thể chấm công cho ngày đã qua.',
-                    ], 422);
-                }
+            $employee = $face->employee;
+            $now = now()->setTimezone('Asia/Ho_Chi_Minh');
+            $today = $now->toDateString();
+            $yesterday = $now->copy()->subDay()->toDateString();
 
-                $assignments = WorkAssignment::with('shift')
-                    ->where('employee_id', $employee->id)
-                    ->where('work_date', $today)
-                    ->get();
+            // Lấy phân công hôm nay + hôm qua để hỗ trợ ca đêm
+            $assignments = WorkAssignment::with('shift')
+                ->where('employee_id', $employee->id)
+                ->whereIn('work_date', [$yesterday, $today])
+                ->get();
 
-                if ($assignments->count() > 2) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Số ca chính vượt quá giới hạn 2 ca/ngày.',
-                    ], 422);
-                }
+            if ($assignments->count() > 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Số ca chính vượt quá giới hạn 2 ca/ngày.',
+                ], 422);
+            }
 
-                $overtime = OvertimeRequest::where('employee_id', $employee->id)
-                    ->where('work_date', $today)
-                    ->first(); // Bỏ kiểm tra status
+            // Lấy toàn bộ đơn OT liên quan (hôm qua + hôm nay)
+            $otList = OvertimeRequest::where('employee_id', $employee->id)
+                ->whereIn('work_date', [$yesterday, $today])
+                ->get();
 
-                $mainShiftsCount = $assignments->count();
+            // ====================================================
+            // 1) ƯU TIÊN CHECK-OUT CHO OT CUSTOM ĐANG MỞ
+            // ====================================================
+            $openCustom = Attendance::where('employee_id', $employee->id)
+                ->whereNull('shift_id')
+                ->where('is_overtime', 1)
+                ->whereNull('check_out')
+                ->orderByDesc('work_date')
+                ->first();
 
-                $matchedSlot = null;
-                foreach ($assignments as $a) {
-                    $start = Carbon::createFromFormat('H:i:s', $a->shift->start_time)->setDateFrom($now);
-                    $end = Carbon::createFromFormat('H:i:s', $a->shift->end_time)->setDateFrom($now);
-                    if ($end->lessThan($start)) $end->addDay();
+            if ($openCustom) {
+                $ot = $otList->firstWhere('id', $openCustom->overtime_request_id);
+                if ($ot && $ot->overtime_type === 'custom') {
+                    $otStart = Carbon::parse($ot->start_datetime, $now->timezone);
+                    $otEnd   = Carbon::parse($ot->end_datetime,   $now->timezone);
 
-                    if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
-                        $matchedSlot = [
-                            'start' => $start,
-                            'end' => $end,
-                            'shift_id' => $a->shift_id,
-                            'type' => 'shift'
-                        ];
-                        break;
-                    }
-                }
+                    $checkIn = Carbon::createFromFormat('H:i:s', $openCustom->check_in, $now->timezone)
+                        ->setDateFrom($otStart);
 
-                if (!$matchedSlot && $overtime) {
-                    $start = Carbon::parse($overtime->start_datetime)->setTimezone('Asia/Ho_Chi_Minh');
-                    $end = Carbon::parse($overtime->end_datetime)->setTimezone('Asia/Ho_Chi_Minh');
+                    // clamp trong cửa sổ OT
+                    $effStart = $checkIn->gt($otStart) ? $checkIn->copy() : $otStart->copy();
+                    $effEnd   = $now->lt($otEnd) ? $now->copy() : $otEnd->copy();
 
-                    $maxOvertimeHours = $mainShiftsCount >= 2 ? 0 : ($mainShiftsCount === 1 ? 4 : 6);
-                    $overtimeDuration = $start->floatDiffInHours($end);
+                    $windowMinutes = max(0, $otStart->diffInMinutes($otEnd, false));
+                    $otMinutes     = max(0, $effStart->diffInMinutes($effEnd, false));
 
-                    if ($overtimeDuration > $maxOvertimeHours) {
+                    // 70% thời lượng OT custom
+                    if ($windowMinutes > 0 && $otMinutes < ($windowMinutes * 0.7)) {
                         return response()->json([
                             'success' => false,
-                            'message' => "Thời gian tăng ca vượt quá giới hạn {$maxOvertimeHours} giờ.",
+                            'message' => 'Chưa đủ 70% thời lượng OT tuỳ chỉnh để chấm công ra.',
                         ], 422);
                     }
 
-                    if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
-                        $matchedSlot = [
-                            'start' => $start,
-                            'end' => $end,
-                            'shift_id' => null,
-                            'type' => 'overtime'
-                        ];
-                    }
-                }
+                    $late       = $checkIn->gt($otStart) ? $otStart->diffInMinutes($checkIn) : 0;
+                    $earlyLeave = $now->lt($otEnd) ? $otEnd->diffInMinutes($now) : 0;
 
-                if (!$matchedSlot) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Bạn không có ca làm hoặc tăng ca phù hợp để chấm công lúc này.',
-                    ]);
-                }
-
-                $attendance = Attendance::where('employee_id', $employee->id)
-                    ->where('work_date', $today)
-                    ->where('shift_id', $matchedSlot['shift_id'])
-                    ->first();
-
-                if ($attendance && $attendance->check_out) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Bạn đã chấm công ra rồi.',
-                    ]);
-                }
-
-                if ($attendance) {
-                    // CHECK-OUT
-                    $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in)->setDateFrom($matchedSlot['start']);
-                    $checkOut = $now;
-
-                    $actualMinutes = $checkIn->diffInMinutes($checkOut, false);
-                    $expectedMinutes = $matchedSlot['start']->diffInMinutes($matchedSlot['end'], false);
-
-                    $workedMinutes = min($actualMinutes, $expectedMinutes);
-                    $overtimeMinutes = max(0, $actualMinutes - $expectedMinutes);
-
-                    if ($workedMinutes < $expectedMinutes * 0.7) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Chưa đủ 70% thời gian để chấm công ra.',
-                        ]);
-                    }
-
-                    $attendance->update([
-                        'check_out' => $checkOut->toTimeString(),
-                        'worked_hours' => round($workedMinutes / 60, 2),
-                        'early_leave_minutes' => max(0, $matchedSlot['end']->diffInMinutes($checkOut, false)),
-                        'overtime_hours' => round($overtimeMinutes / 60, 2),
+                    $openCustom->update([
+                        'check_out'            => $now->toTimeString(),
+                        'worked_hours'         => 0, // OT custom không tính giờ công chính
+                        'overtime_hours'       => round($otMinutes / 60, 2),
+                        'late_minutes'         => $late,
+                        'early_leave_minutes'  => $earlyLeave,
+                        'is_overtime'          => 1,
                     ]);
 
                     return response()->json([
                         'success' => true,
-                        'message' => "Chấm công ra thành công cho {$employee->name}",
+                        'message' => 'Kết thúc OT tuỳ chỉnh thành công.',
+                    ]);
+                }
+            }
+
+            // ====================================================
+            // 2) TÌM SLOT CA CHÍNH (HÔM NAY/HÔM QUA) TRÙNG THỜI ĐIỂM HIỆN TẠI
+            // ====================================================
+            $matchedShift = null;
+
+            foreach ($assignments as $a) {
+                if (!$a->shift) continue;
+
+                // Neo theo work_date của phân công để xử lý ca đêm
+                $start = Carbon::parse($a->work_date . ' ' . $a->shift->start_time, $now->timezone);
+                $end   = Carbon::parse($a->work_date . ' ' . $a->shift->end_time,   $now->timezone);
+                if ($end->lessThanOrEqualTo($start)) {
+                    $end->addDay(); // ca đêm
+                }
+
+                // Cho phép vào sớm 60' và checkout muộn 4h (an toàn)
+                if ($now->between($start->copy()->subMinutes(60), $end->copy()->addHours(4))) {
+                    $matchedShift = [
+                        'assignment' => $a,
+                        'start' => $start,
+                        'end' => $end,
+                    ];
+                    break;
+                }
+            }
+
+            // ====================================================
+            // 2.a) CÓ CA CHÍNH -> CHECK-IN / CHECK-OUT
+            // ====================================================
+            if ($matchedShift) {
+                $a = $matchedShift['assignment'];
+                $slotStart = $matchedShift['start'];
+                $slotEnd   = $matchedShift['end'];
+
+                // Tìm bản ghi chấm công của đúng ca (theo work_date của phân công)
+                $attendance = Attendance::where('employee_id', $employee->id)
+                    ->where('work_date', $a->work_date)
+                    ->where('shift_id', $a->shift_id)
+                    ->first();
+
+                // Nếu đã check-out rồi
+                if ($attendance && $attendance->check_out) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bạn đã chấm công ra cho ca này rồi.',
+                    ], 409);
+                }
+
+                // ====== CHECK-OUT CA CHÍNH (có thể kiêm luôn OT AFTER_SHIFT) ======
+                if ($attendance) {
+                    $checkIn = Carbon::createFromFormat('H:i:s', $attendance->check_in, $now->timezone)
+                        ->setDateFrom($slotStart);
+                    $checkOut = $now->copy();
+
+                    $actualMinutes   = max(0, $checkIn->diffInMinutes($checkOut, false));
+                    $expectedMinutes = max(0, $slotStart->diffInMinutes($slotEnd, false));
+
+                    // 70% thời lượng ca
+                    if ($expectedMinutes > 0 && $actualMinutes < ($expectedMinutes * 0.7)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Chưa đủ 70% thời lượng ca để chấm công ra.',
+                        ], 422);
+                    }
+
+                    // Tìm OT after_shift (nếu có) ứng với ca này
+                    $otAfter = $otList->first(function ($ot) use ($slotEnd) {
+                        if ($ot->overtime_type !== 'after_shift') return false;
+                        $st = Carbon::parse($ot->start_datetime)->timezone($slotEnd->timezone);
+                        // đơn sau ca: start_datetime phải bằng giờ kết thúc ca (cho phép lệch nhỏ <= 5p)
+                        return abs($st->diffInMinutes($slotEnd, false)) <= 5;
+                    });
+
+                    // Tính worked (trong khung ca) & overtime (sau ca, clamp tới end OT)
+                    $workedMinutes = min($actualMinutes, $expectedMinutes);
+                    $overtimeMinutes = 0;
+
+                    if ($otAfter) {
+                        $otEnd = Carbon::parse($otAfter->end_datetime, $now->timezone);
+                        if ($checkOut->gt($slotEnd)) {
+                            $maxWindow = max(0, $slotEnd->diffInMinutes($otEnd)); // tổng cửa sổ OT
+                            $extra     = $slotEnd->diffInMinutes($checkOut);      // phần làm vượt sau ca
+                            $overtimeMinutes = min($extra, $maxWindow);
+                        }
+                    } else {
+                        // Không có đơn after_shift => không tính OT phần vượt
+                        $overtimeMinutes = 0;
+                    }
+
+                    // Đi muộn / về sớm so với khung ca
+                    $lateMinutes  = $checkIn->gt($slotStart) ? $slotStart->diffInMinutes($checkIn) : 0;
+                    $earlyMinutes = $checkOut->lt($slotEnd) ? $slotEnd->diffInMinutes($checkOut) : 0;
+
+                    $attendance->update([
+                        'check_out'           => $checkOut->toTimeString(),
+                        'worked_hours'        => round($workedMinutes / 60, 2),
+                        'overtime_hours'      => round($overtimeMinutes / 60, 2),
+                        'late_minutes'        => $lateMinutes,
+                        'early_leave_minutes' => $earlyMinutes,
+                        'is_overtime'         => 0,
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Chấm công ra ca chính thành công' . ($overtimeMinutes > 0 ? ' (có OT sau ca).' : '.'),
                     ]);
                 }
 
-                // CHECK-IN
-                $lateMinutes = $now->gt($matchedSlot['start']) ? $matchedSlot['start']->diffInMinutes($now) : 0;
-                if ($lateMinutes > 120) {
+                // ====== CHECK-IN CA CHÍNH ======
+                $late = $now->gt($slotStart) ? $slotStart->diffInMinutes($now) : 0;
+                if ($late > 120) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Bạn đã đến muộn quá 2 tiếng, không thể chấm công vào.',
-                    ]);
+                    ], 422);
                 }
 
                 Attendance::create([
                     'employee_id' => $employee->id,
-                    'shift_id' => $matchedSlot['shift_id'],
-                    'work_date' => $today,
-                    'check_in' => $now->toTimeString(),
-                    'late_minutes' => $lateMinutes,
+                    'shift_id'    => $a->shift_id,
+                    'work_date'   => $a->work_date,
+                    'check_in'    => $now->toTimeString(),
+                    'late_minutes'=> $late,
+                    'is_overtime' => 0,
                 ]);
 
                 return response()->json([
                     'success' => true,
-                    'message' => "Chấm công vào thành công cho {$employee->name}",
+                    'message' => 'Chấm công vào ca chính thành công.',
                 ]);
             }
+
+            // ====================================================
+            // 3) KHÔNG CÓ CA CHÍNH -> XỬ LÝ OT CUSTOM (CHECK-IN)
+            // ====================================================
+            $activeCustomOT = $otList->first(function ($ot) use ($now) {
+                if ($ot->overtime_type !== 'custom') return false;
+                $st = Carbon::parse($ot->start_datetime, $now->timezone);
+                $en = Carbon::parse($ot->end_datetime,   $now->timezone);
+                return $now->between($st->copy()->subMinutes(60), $en); // cho vào sớm 60'
+            });
+
+            if ($activeCustomOT) {
+                // Không tạo trùng check-in OT custom cùng cửa sổ
+                $already = Attendance::where('employee_id', $employee->id)
+                    ->whereNull('shift_id')
+                    ->where('is_overtime', 1)
+                    ->where('overtime_request_id', $activeCustomOT->id)
+                    ->whereNull('check_out')
+                    ->first();
+
+                if ($already) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Bạn đã chấm công vào OT tuỳ chỉnh rồi, hãy chấm công ra khi kết thúc.',
+                    ], 409);
+                }
+
+                Attendance::create([
+                    'employee_id'         => $employee->id,
+                    'shift_id'            => null,
+                    'work_date'           => $activeCustomOT->work_date,
+                    'check_in'            => $now->toTimeString(),
+                    'late_minutes'        => 0, // cập nhật khi check-out
+                    'is_overtime'         => 1,
+                    'overtime_request_id' => $activeCustomOT->id,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Bắt đầu OT tuỳ chỉnh thành công.',
+                ]);
+            }
+
+            // Không khớp ca/OT nào
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có ca làm hoặc tăng ca phù hợp để chấm công lúc này.',
+            ], 422);
         }
 
+        // Nếu không khớp được khuôn mặt nào
         return response()->json([
             'success' => false,
             'message' => 'Không nhận diện được khuôn mặt. Hãy thử lại với góc mặt rõ hơn.',
         ], 400);
     }
+
 }
+
+

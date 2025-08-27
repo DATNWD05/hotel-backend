@@ -725,6 +725,7 @@ class BookingController extends Controller
         }
 
         $now = now();
+
         $checkInDateTime = Carbon::parse($booking->check_in_date);
         $earlyCheckIn = $request->input('early_check_in', false);
 
@@ -740,6 +741,14 @@ class BookingController extends Controller
                 ], 400);
             }
         }
+//         $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
+
+        // Chỉ cho check-in đúng ngày nhận phòng
+//         if ($now->toDateString() !== $checkInDate) {
+//             return response()->json([
+//                 'error' => "Chỉ được check-in trong ngày $checkInDate."
+//             ], 400);
+//         }
 
         DB::beginTransaction();
         try {
@@ -747,7 +756,12 @@ class BookingController extends Controller
             $booking->check_in_at = $now;
             $booking->save();
 
+            $booking->loadMissing('rooms');
+
             foreach ($booking->rooms as $room) {
+                if (!in_array($room->status, ['available', 'booked'])) {
+                    throw new \Exception("Phòng {$room->room_number} không khả dụng để check-in.");
+                }
                 $room->update(['status' => 'booked']);
             }
 
