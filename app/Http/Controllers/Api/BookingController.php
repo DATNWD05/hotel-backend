@@ -714,25 +714,27 @@ class BookingController extends Controller
         }
 
         $now = now();
-        $startTime = $booking->start_time instanceof Carbon
-            ? $booking->start_time
-            : Carbon::parse($booking->start_time);
+        $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
 
-        $allowedLateCheckIn = $startTime->copy()->addHours(2);
-
-        if ($now->greaterThan($allowedLateCheckIn)) {
+        // Chỉ cho check-in đúng ngày nhận phòng
+        if ($now->toDateString() !== $checkInDate) {
             return response()->json([
-                'error' => 'Booking hiện không ở trạng thái cho phép check-in'
+                'error' => "Chỉ được check-in trong ngày $checkInDate."
             ], 400);
         }
 
         DB::beginTransaction();
         try {
             $booking->status = 'Checked-in';
-            $booking->check_in_at = now();
+            $booking->check_in_at = $now;
             $booking->save();
 
+            $booking->loadMissing('rooms');
+
             foreach ($booking->rooms as $room) {
+                if (!in_array($room->status, ['available', 'booked'])) {
+                    throw new \Exception("Phòng {$room->room_number} không khả dụng để check-in.");
+                }
                 $room->update(['status' => 'booked']);
             }
 
