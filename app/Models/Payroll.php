@@ -10,11 +10,13 @@ class Payroll extends Model
         'employee_id',
         'month',
         'total_hours',
+        'overtime_hours',      // ✅ mới
         'total_days',
         'total_salary',
+        'overtime_salary',   // ✅ thêm vào đây
         'bonus',
         'penalty',
-        'final_salary'
+        'final_salary',
     ];
 
     public function employee()
