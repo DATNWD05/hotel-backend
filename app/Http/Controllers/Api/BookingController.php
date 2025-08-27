@@ -741,14 +741,14 @@ class BookingController extends Controller
                 ], 400);
             }
         }
-//         $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
+        //         $checkInDate = Carbon::parse($booking->check_in_date)->toDateString();
 
         // Chỉ cho check-in đúng ngày nhận phòng
-//         if ($now->toDateString() !== $checkInDate) {
-//             return response()->json([
-//                 'error' => "Chỉ được check-in trong ngày $checkInDate."
-//             ], 400);
-//         }
+        //         if ($now->toDateString() !== $checkInDate) {
+        //             return response()->json([
+        //                 'error' => "Chỉ được check-in trong ngày $checkInDate."
+        //             ], 400);
+        //         }
 
         DB::beginTransaction();
         try {
