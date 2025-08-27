@@ -40,222 +40,209 @@ class WorkAssignmentController extends Controller
 
     // Phân công nhiều ca làm việc
     public function store(Request $request)
-    {
-        $request->validate([
-            'assignments' => 'required|array|min:1',
-            'assignments.*.employee_id' => 'required|exists:employees,id',
-            'assignments.*.work_date' => 'required|date',
-            'assignments.*.shift_ids' => 'nullable|array',
-            'assignments.*.shift_ids.*' => 'exists:shifts,id'
-        ]);
+{
+    $request->validate([
+        'assignments' => 'required|array|min:1',
+        'assignments.*.employee_id' => 'required|exists:employees,id',
+        'assignments.*.work_date'   => 'required|date',
+        'assignments.*.shift_ids'   => 'nullable|array',
+        'assignments.*.shift_ids.*' => 'exists:shifts,id',
+    ]);
 
-        $created = [];
-        $deleted = [];
-        $skipped = [];
+    $created = [];
+    $deleted = [];
+    $skipped = [];
 
-        $today = now('Asia/Ho_Chi_Minh')->format('Y-m-d');
+    $tz    = 'Asia/Ho_Chi_Minh';
+    $today = now($tz)->format('Y-m-d');
 
-        // Có thể đưa vào config('attendance.min_rest_hours', 11) cho linh hoạt
-        $minRestHours = config('attendance.min_rest_hours', 11);
+    foreach ($request->assignments as $assignment) {
+        $employeeId  = $assignment['employee_id'];
+        $date        = $assignment['work_date'];
+        $newShiftIds = $assignment['shift_ids'] ?? [];
 
-        foreach ($request->assignments as $assignment) {
-            $employeeId  = $assignment['employee_id'];
-            $date        = $assignment['work_date'];
-            $newShiftIds = $assignment['shift_ids'] ?? [];
+        // 0) Kiểm tra trạng thái nhân viên
+        $employee = \App\Models\Employee::find($employeeId);
+        if (!$employee || strtolower($employee->status) !== 'active') {
+            $skipped[] = [
+                'employee_id' => $employeeId,
+                'work_date'   => $date,
+                'reason'      => 'Nhân viên đã nghỉ việc hoặc không hoạt động',
+            ];
+            continue;
+        }
 
-            // Kiểm tra trạng thái nhân viên
-            $employee = \App\Models\Employee::find($employeeId);
-            if (!$employee || strtolower($employee->status) !== 'active') {
-                $skipped[] = [
+        // 1) Không cho phân công cho ngày đã qua
+        if ($date < $today) {
+            $skipped[] = [
+                'employee_id' => $employeeId,
+                'work_date'   => $date,
+                'reason'      => 'Không thể phân công cho ngày đã qua',
+            ];
+            continue;
+        }
+
+        // 2) Giới hạn tối đa 2 ca/ngày (theo input)
+        if (count($newShiftIds) > 2) {
+            $skipped[] = [
+                'employee_id' => $employeeId,
+                'work_date'   => $date,
+                'reason'      => 'Vượt quá giới hạn 2 ca/ngày',
+            ];
+            continue;
+        }
+
+        // 3) Lấy các ca đã phân trong ngày (để xóa ca không còn)
+        $existingAssignments = \App\Models\WorkAssignment::where('employee_id', $employeeId)
+            ->where('work_date', $date)
+            ->get();
+        $existingShiftIds = $existingAssignments->pluck('shift_id')->toArray();
+
+        // 3.a) Xóa những ca không còn trong danh sách mới
+        foreach ($existingAssignments as $existing) {
+            if (!in_array($existing->shift_id, $newShiftIds)) {
+                $existing->delete();
+                $deleted[] = [
                     'employee_id' => $employeeId,
                     'work_date'   => $date,
-                    'reason'      => 'Nhân viên đã nghỉ việc hoặc không hoạt động',
+                    'shift_id'    => $existing->shift_id,
                 ];
-                continue;
-            }
-
-            // Không cho phép phân công ngược ngày
-            if ($date < $today) {
-                $skipped[] = [
-                    'employee_id' => $employeeId,
-                    'work_date'   => $date,
-                    'reason'      => 'Không thể phân công cho ngày đã qua',
-                ];
-                continue;
-            }
-
-            // Giới hạn tối đa 2 ca/ngày
-            if (count($newShiftIds) > 2) {
-                $skipped[] = [
-                    'employee_id' => $employeeId,
-                    'work_date'   => $date,
-                    'reason'      => 'Vượt quá giới hạn 2 ca/ngày',
-                ];
-                continue;
-            }
-
-            // Lấy các ca đã phân trong ngày (để xóa những ca không còn và tránh tạo trùng)
-            $existingAssignments = \App\Models\WorkAssignment::where('employee_id', $employeeId)
-                ->where('work_date', $date)
-                ->get();
-
-            $existingShiftIds = $existingAssignments->pluck('shift_id')->toArray();
-
-            // Xóa những ca không còn trong danh sách mới
-            foreach ($existingAssignments as $existing) {
-                if (!in_array($existing->shift_id, $newShiftIds)) {
-                    $existing->delete();
-                    $deleted[] = [
-                        'employee_id' => $employeeId,
-                        'work_date'   => $date,
-                        'shift_id'    => $existing->shift_id,
-                    ];
-                }
-            }
-
-            // Chuẩn bị dữ liệu kiểm tra nghỉ tối thiểu
-            $workDate = Carbon::parse($date, 'Asia/Ho_Chi_Minh');
-
-            // Lấy các ca hôm trước
-            $yesterdayAssignments = \App\Models\WorkAssignment::with('shift')
-                ->where('employee_id', $employeeId)
-                ->where('work_date', $workDate->copy()->subDay()->toDateString())
-                ->get();
-
-            // Tính end thực của ca hôm trước (xử lý ca qua đêm)
-            $yesterdayEnds = [];
-            foreach ($yesterdayAssignments as $ya) {
-                $s = $ya->shift;
-                if (!$s) continue;
-
-                $ysStart = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->copy()->subDay()->format('Y-m-d') . ' ' . $s->start_time, 'Asia/Ho_Chi_Minh');
-                $ysEnd   = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->copy()->subDay()->format('Y-m-d') . ' ' . $s->end_time,   'Asia/Ho_Chi_Minh');
-                if ($ysEnd->lt($ysStart)) {
-                    // Ca qua đêm → kết thúc sang ngày hiện tại
-                    $ysEnd->addDay();
-                }
-                $yesterdayEnds[] = $ysEnd;
-            }
-
-            // Lấy các ca đã có trong ngày hiện tại (để kiểm tra khoảng nghỉ giữa 2 ca cùng ngày)
-            $todayExisting = \App\Models\WorkAssignment::with('shift')
-                ->where('employee_id', $employeeId)
-                ->where('work_date', $workDate->toDateString())
-                ->get();
-
-            // Quy về khoảng thời gian (start, end) thực của các ca đã có trong ngày
-            $todayIntervals = [];
-            foreach ($todayExisting as $ex) {
-                $s = $ex->shift;
-                if (!$s) continue;
-
-                $st = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->format('Y-m-d') . ' ' . $s->start_time, 'Asia/Ho_Chi_Minh');
-                $en = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->format('Y-m-d') . ' ' . $s->end_time,   'Asia/Ho_Chi_Minh');
-                if ($en->lt($st)) $en->addDay(); // ca qua đêm
-                $todayIntervals[] = [$st, $en];
-            }
-
-            // Lấy thông tin các ca sắp gán
-            $shiftMap = Shift::whereIn('id', $newShiftIds)->get()->keyBy('id');
-
-            // Tạo mới các ca chưa có, có kiểm tra nghỉ tối thiểu
-            foreach ($newShiftIds as $shiftId) {
-                // Đã tồn tại thì bỏ qua (vì bên trên đã giữ lại)
-                if (in_array($shiftId, $existingShiftIds)) {
-                    continue;
-                }
-
-                $s = $shiftMap[$shiftId] ?? null;
-                if (!$s) {
-                    $skipped[] = [
-                        'employee_id' => $employeeId,
-                        'work_date'   => $date,
-                        'shift_id'    => $shiftId,
-                        'reason'      => 'Không tìm thấy ca làm (shift)',
-                    ];
-                    continue;
-                }
-
-                // Khoảng thời gian thực của ca mới
-                $newStart = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->format('Y-m-d') . ' ' . $s->start_time, 'Asia/Ho_Chi_Minh');
-                $newEnd   = Carbon::createFromFormat('Y-m-d H:i:s', $workDate->format('Y-m-d') . ' ' . $s->end_time,   'Asia/Ho_Chi_Minh');
-                if ($newEnd->lt($newStart)) $newEnd->addDay(); // ca qua đêm
-
-                // 1) Kiểm tra nghỉ tối thiểu so với ca kết thúc hôm trước
-                $violatesRest = false;
-                foreach ($yesterdayEnds as $prevEnd) {
-                    $restHours = $prevEnd->floatDiffInHours($newStart);
-                    if ($restHours < $minRestHours) {
-                        $violatesRest = true;
-                        $skipped[] = [
-                            'employee_id' => $employeeId,
-                            'work_date'   => $date,
-                            'shift_id'    => $shiftId,
-                            'reason'      => "Không đủ thời gian nghỉ tối thiểu sau ca hôm trước (" . round($restHours, 1) . "h < {$minRestHours}h)",
-                        ];
-                        break;
-                    }
-                }
-                if ($violatesRest) continue;
-
-                // 2) Kiểm tra nghỉ tối thiểu giữa 2 ca trong cùng ngày (nếu đã có ca khác)
-                foreach ($todayIntervals as [$st, $en]) {
-                    // Trường hợp ca mới nằm sau ca đã có
-                    if ($newStart->gte($en)) {
-                        $restHours = $en->floatDiffInHours($newStart);
-                        if ($restHours < $minRestHours) {
-                            $violatesRest = true;
-                            $skipped[] = [
-                                'employee_id' => $employeeId,
-                                'work_date'   => $date,
-                                'shift_id'    => $shiftId,
-                                'reason'      => "Khoảng nghỉ giữa 2 ca trong ngày không đủ (" . round($restHours, 1) . "h < {$minRestHours}h)",
-                            ];
-                            break;
-                        }
-                    }
-                    // Trường hợp ca mới nằm trước ca đã có
-                    if ($newEnd->lte($st)) {
-                        $restHours = $newEnd->floatDiffInHours($st);
-                        if ($restHours < $minRestHours) {
-                            $violatesRest = true;
-                            $skipped[] = [
-                                'employee_id' => $employeeId,
-                                'work_date'   => $date,
-                                'shift_id'    => $shiftId,
-                                'reason'      => "Khoảng nghỉ giữa 2 ca trong ngày không đủ (" . round($restHours, 1) . "h < {$minRestHours}h)",
-                            ];
-                            break;
-                        }
-                    }
-                }
-                if ($violatesRest) continue;
-
-                // OK → tạo mới
-                $created[] = \App\Models\WorkAssignment::create([
-                    'employee_id' => $employeeId,
-                    'work_date'   => $date,
-                    'shift_id'    => $shiftId,
-                ]);
-
-                // Cập nhật todayIntervals để kiểm tra các ca tiếp theo trong cùng request
-                $todayIntervals[] = [$newStart, $newEnd];
             }
         }
 
-        return response()->json([
-            'success'       => true,
-            'message'       => 'Phân công nhiều ca đã được xử lý.',
-            'created_count' => count($created),
-            'deleted_count' => count($deleted),
-            'skipped_count' => count($skipped),
-            'data' => [
-                'created' => $created,
-                'deleted' => $deleted,
-                'skipped' => $skipped,
-            ],
-        ]);
+        // 4) Xác định hôm qua có ca đêm hay không
+        $workDate   = \Carbon\Carbon::parse($date, $tz);
+        $yesterday  = $workDate->copy()->subDay()->toDateString();
+
+        $yesterdayAssignments = \App\Models\WorkAssignment::with('shift')
+            ->where('employee_id', $employeeId)
+            ->where('work_date', $yesterday)
+            ->get();
+
+        $hadNightYesterday = false;
+        foreach ($yesterdayAssignments as $ya) {
+            $s = $ya->shift;
+            if (!$s) continue;
+            // Ca đêm: end_time <= start_time (qua ngày)
+            $startT = \Carbon\Carbon::createFromFormat('H:i:s', $s->start_time, $tz);
+            $endT   = \Carbon\Carbon::createFromFormat('H:i:s', $s->end_time,   $tz);
+            if ($endT->lessThanOrEqualTo($startT)) {
+                $hadNightYesterday = true;
+                break;
+            }
+        }
+
+        // 5) Khoảng thời gian các ca đã có trong ngày (để chống chồng giờ)
+        $todayExisting = \App\Models\WorkAssignment::with('shift')
+            ->where('employee_id', $employeeId)
+            ->where('work_date', $workDate->toDateString())
+            ->get();
+
+        $todayIntervals = [];
+        foreach ($todayExisting as $ex) {
+            $s = $ex->shift;
+            if (!$s) continue;
+            $st = \Carbon\Carbon::parse($workDate->format('Y-m-d') . ' ' . $s->start_time, $tz);
+            $en = \Carbon\Carbon::parse($workDate->format('Y-m-d') . ' ' . $s->end_time,   $tz);
+            if ($en->lessThanOrEqualTo($st)) $en->addDay(); // ca đêm
+            $todayIntervals[] = [$st, $en];
+        }
+
+        // 6) Map shifts
+        $shiftMap = \App\Models\Shift::whereIn('id', $newShiftIds)->get()->keyBy('id');
+
+        // 7) Tạo mới các ca chưa có, theo quy tắc mới
+        foreach ($newShiftIds as $shiftId) {
+            // đã tồn tại → bỏ qua
+            if (in_array($shiftId, $existingShiftIds)) {
+                continue;
+            }
+
+            $s = $shiftMap[$shiftId] ?? null;
+            if (!$s) {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date'   => $date,
+                    'shift_id'    => $shiftId,
+                    'reason'      => 'Không tìm thấy ca làm (shift)',
+                ];
+                continue;
+            }
+
+            // Xác định ca này có phải ca đêm không
+            $startT = \Carbon\Carbon::createFromFormat('H:i:s', $s->start_time, $tz);
+            $endT   = \Carbon\Carbon::createFromFormat('H:i:s', $s->end_time,   $tz);
+            $isNight = $endT->lessThanOrEqualTo($startT);
+
+            // QUY TẮC MỚI:
+            // - Nếu hôm qua có ca đêm → hôm nay CHỈ ĐƯỢC ca đêm
+            if ($hadNightYesterday && !$isNight) {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date'   => $date,
+                    'shift_id'    => $shiftId,
+                    'reason'      => 'Hôm qua đã làm ca đêm → hôm nay chỉ được phân ca đêm',
+                ];
+                continue;
+            }
+
+            // Tính interval thực của ca mới để chống chồng giờ trong ngày
+            $newStart = \Carbon\Carbon::parse($workDate->format('Y-m-d') . ' ' . $s->start_time, $tz);
+            $newEnd   = \Carbon\Carbon::parse($workDate->format('Y-m-d') . ' ' . $s->end_time,   $tz);
+            if ($newEnd->lessThanOrEqualTo($newStart)) $newEnd->addDay(); // ca đêm
+
+            // Không cho phép CHỒNG/GIAO nhau với ca đã có trong ngày
+            $overlap = false;
+            foreach ($todayIntervals as [$st, $en]) {
+                // overlap nếu max(start) < min(end)
+                if ($newStart->lt($en) && $st->lt($newEnd)) {
+                    $overlap = true;
+                    break;
+                }
+            }
+            if ($overlap) {
+                $skipped[] = [
+                    'employee_id' => $employeeId,
+                    'work_date'   => $date,
+                    'shift_id'    => $shiftId,
+                    'reason'      => 'Thời gian ca mới bị chồng với ca đã có trong ngày',
+                ];
+                continue;
+            }
+
+            // OK → tạo mới
+            $created[] = \App\Models\WorkAssignment::create([
+                'employee_id' => $employeeId,
+                'work_date'   => $date,
+                'shift_id'    => $shiftId,
+            ]);
+
+            // cập nhật intervals để kiểm soát các ca sau trong cùng request
+            $todayIntervals[] = [$newStart, $newEnd];
+
+            // Vẫn đảm bảo tối đa 2 ca/ngày theo input => điều kiện ở đầu đã chặn >2,
+            // còn nếu bạn muốn “cứng” thêm: khi đã đủ 2 interval thì dừng
+            if (count($todayIntervals) >= 2) {
+                // dừng sớm để tránh vô tình thêm tiếp (nếu client gửi trùng lặp)
+                break;
+            }
+        }
     }
+
+    return response()->json([
+        'success'       => true,
+        'message'       => 'Phân công nhiều ca đã được xử lý.',
+        'created_count' => count($created),
+        'deleted_count' => count($deleted),
+        'skipped_count' => count($skipped),
+        'data' => [
+            'created' => $created,
+            'deleted' => $deleted,
+            'skipped' => $skipped,
+        ],
+    ]);
+}
+
 
 
     // Cập nhật phân công
@@ -326,26 +313,26 @@ class WorkAssignmentController extends Controller
     //     ]);
     // }
 
-    public function import(Request $request)
-    {
-        if (!$request->hasFile('file')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vui lòng chọn file Excel.'
-            ], 400);
-        }
+    // public function import(Request $request)
+    // {
+    //     if (!$request->hasFile('file')) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Vui lòng chọn file Excel.'
+    //         ], 400);
+    //     }
 
-        try {
-            Excel::import(new WorkAssignmentImport, $request->file('file'));
-            return response()->json([
-                'success' => true,
-                'message' => 'Import phân công thành công!'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Lỗi khi import: ' . $e->getMessage()
-            ], 500);
-        }
-    }
+    //     try {
+    //         Excel::import(new WorkAssignmentImport, $request->file('file'));
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Import phân công thành công!'
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Lỗi khi import: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 }
