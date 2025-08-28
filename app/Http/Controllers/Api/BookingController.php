@@ -91,8 +91,10 @@ class BookingController extends Controller
         $checkIn  = Carbon::parse($validated['check_in_date']);
         $checkOut = Carbon::parse($validated['check_out_date']);
 
+        $query = Room::query()
+            // 🔹 Loại bỏ phòng đang bảo trì
+            ->where('status', '!=', 'maintenance');
 
-        $query = Room::query();
         if (!empty($validated['room_type_id'])) {
             $query->where('room_type_id', $validated['room_type_id']);
         }
@@ -756,7 +758,6 @@ class BookingController extends Controller
             ], 500);
         }
     }
-
 
     public function checkOut(Booking $booking)
     {
